@@ -1,0 +1,4 @@
+var x = 6;
+ver y = 7;
+
+print(x * y);
