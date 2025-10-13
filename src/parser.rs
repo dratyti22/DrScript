@@ -68,9 +68,9 @@ impl Parser {
                     Some(Token::Ident(name)) => name, // тут получаем имя переменной
                     _ => panic!("Ожидал имя переменной"),
                 };
-                self.expect((&Token::Assign)); // тут проверяем что после имени идет =
+                self.expect(&Token::Assign); // тут проверяем что после имени идет =
                 let value = self.parse_expr(); // тут парсим выражение
-                self.expect((&Token::Semicolon)); // тут проверяем что после выражения идет ;
+                self.expect(&Token::Semicolon); // тут проверяем что после выражения идет ;
                 Stmt::Assign { name, value }
             }
             Token::Ver => {
@@ -78,9 +78,9 @@ impl Parser {
                     Some(Token::Ident(name)) => name, // тут получаем имя переменной
                     _ => panic!("Ожидал имя переменной"),
                 };
-                self.expect((&Token::Assign)); // тут проверяем что после имени идет =
+                self.expect(&Token::Assign); // тут проверяем что после имени идет =
                 let value = self.parse_expr(); // тут парсим выражение
-                self.expect((&Token::Semicolon)); // тут проверяем что после выражения идет ;
+                self.expect(&Token::Semicolon); // тут проверяем что после выражения идет ;
                 Stmt::VerDecl {
                     name,
                     value,
@@ -92,7 +92,7 @@ impl Parser {
     }
 
     fn parse_print(&mut self) -> Stmt {
-        self.advance(); /// пропускаем print
+        self.advance(); // пропускаем print
         self.expect(&Token::LParen);
         let expr = self.parse_expr();
         self.expect(&Token::RParen);
@@ -101,29 +101,19 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Expr {
-        let mut left = self.parse_primary();
+        let mut left = self.parse_tern();
 
         while let Some(tok) = self.peek() {
             match tok {
                 Token::Plus => {
                     self.advance();
-                    let right = self.parse_primary();
+                    let right = self.parse_tern();
                     left = Expr::Plus(Box::new(left), Box::new(right));
                 }
                 Token::Minus => {
                     self.advance();
-                    let right = self.parse_primary();
+                    let right = self.parse_tern();
                     left = Expr::Minus(Box::new(left), Box::new(right));
-                }
-                Token::Star => {
-                    self.advance();
-                    let right = self.parse_primary();
-                    left = Expr::Star(Box::new(left), Box::new(right));
-                }
-                Token::Slash => {
-                    self.advance();
-                    let right = self.parse_primary();
-                    left = Expr::Slash(Box::new(left), Box::new(right));
                 }
                 _ => break,
             }
@@ -153,5 +143,26 @@ impl Parser {
         let value = self.parse_expr();
         self.expect(&Token::Semicolon);
         Stmt::Assign { name, value }
+    }
+    /// отвечает за * и /
+    fn parse_tern(&mut self) -> Expr {
+        let mut left = self.parse_primary();
+
+        while let Some(tok) = self.peek() {
+            match tok {
+                Token::Star => {
+                    self.advance();
+                    let right = self.parse_primary();
+                    left = Expr::Star(Box::new(left), Box::new(right));
+                }
+                Token::Slash => {
+                    self.advance();
+                    let right = self.parse_primary();
+                    left = Expr::Slash(Box::new(left), Box::new(right));
+                }
+                _ => break,
+            }
+        }
+        left
     }
 }

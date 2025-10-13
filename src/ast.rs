@@ -6,7 +6,6 @@ pub enum Expr {
     Minus(Box<Expr>, Box<Expr>),
     Star(Box<Expr>, Box<Expr>),
     Slash(Box<Expr>, Box<Expr>),
-    Print(Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
