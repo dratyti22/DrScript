@@ -59,7 +59,7 @@ impl Interpretation {
             Stmt::Print(expr) => println!("{:?}", self.run_expr(expr)),
         }
     }
-    fn run_expr(&mut self, expr: Expr) -> i64 {
+    fn run_expr(&self, expr: Expr) -> i64 {
         match expr {
             Expr::Num(n) => n,
             Expr::Ident(n) => {

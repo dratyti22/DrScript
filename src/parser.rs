@@ -41,7 +41,7 @@ impl Parser {
             panic!("Expected {:?} but got {:?}", token, self.peek())
         }
     }
-
+    /// парсинг значений
     pub fn parse(&mut self) -> Vec<Stmt> {
         let mut stmts: Vec<Stmt> = Vec::new();
         while self.peek().is_some() {
@@ -49,6 +49,7 @@ impl Parser {
         }
         stmts
     }
+    /// проверка того что приходит на вход
     fn parse_stmt(&mut self) -> Stmt {
         match self.peek() {
             Some(Token::Var) | Some(Token::Ver) => self.parse_var_decl(),
@@ -90,7 +91,7 @@ impl Parser {
             _ => panic!("Ожидал переменную"),
         }
     }
-
+    /// выводит значение
     fn parse_print(&mut self) -> Stmt {
         self.advance(); // пропускаем print
         self.expect(&Token::LParen);
@@ -99,7 +100,7 @@ impl Parser {
         self.expect(&Token::Semicolon);
         Stmt::Print(expr)
     }
-
+    /// получение выражения за =
     fn parse_expr(&mut self) -> Expr {
         let mut left = self.parse_tern();
 
@@ -120,20 +121,7 @@ impl Parser {
         }
         left
     }
-
-    fn parse_primary(&mut self) -> Expr {
-        match self.advance() {
-            Some(Token::Number(n)) => Expr::Num(n),
-            Some(Token::Ident(name)) => Expr::Ident(name),
-            Some(Token::LParen) => {
-                let expr = self.parse_expr();
-                self.expect(&Token::RParen);
-                expr
-            }
-            other => panic!("Ожидал число или переменную: {:?}", other),
-        }
-    }
-
+    /// по логике изменение значения переменной
     fn parse_assign(&mut self) -> Stmt {
         let name = match self.advance() {
             Some(Token::Ident(name)) => name,
@@ -164,5 +152,18 @@ impl Parser {
             }
         }
         left
+    }
+    /// получение числа или имя или значение в скабках
+    fn parse_primary(&mut self) -> Expr {
+        match self.advance() {
+            Some(Token::Number(n)) => Expr::Num(n),
+            Some(Token::Ident(name)) => Expr::Ident(name),
+            Some(Token::LParen) => {
+                let expr = self.parse_expr();
+                self.expect(&Token::RParen);
+                expr
+            }
+            other => panic!("Ожидал число или переменную: {:?}", other),
+        }
     }
 }
