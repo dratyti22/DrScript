@@ -6,6 +6,12 @@ pub enum Expr {
     Minus(Box<Expr>, Box<Expr>),
     Star(Box<Expr>, Box<Expr>),
     Slash(Box<Expr>, Box<Expr>),
+    Less(Box<Expr>, Box<Expr>),
+    LessEqual(Box<Expr>, Box<Expr>),
+    Greater(Box<Expr>, Box<Expr>),
+    GreaterEqual(Box<Expr>, Box<Expr>),
+    EqualEqual(Box<Expr>, Box<Expr>),
+    NotEqual(Box<Expr>, Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -32,11 +32,7 @@ impl Interpretation {
                 mutable,
             } => {
                 let v = self.run_expr(value);
-                if self.vars.contains_key(&name) {
-                    *self.vars.get_mut(&name).unwrap() = Value { value: v, mutable };
-                } else {
-                    self.vars.insert(name, Value { value: v, mutable });
-                }
+                self.vars.insert(name, Value { value: v, mutable });
             }
             Stmt::Assign { name, value } => {
                 if self.vars.contains_key(&name) {
@@ -74,6 +70,12 @@ impl Interpretation {
             Expr::Minus(l, r) => self.run_expr(*l) - self.run_expr(*r),
             Expr::Star(l, r) => self.run_expr(*l) * self.run_expr(*r),
             Expr::Slash(l, r) => self.run_expr(*l) / self.run_expr(*r),
+            Expr::Less(l, r) => (self.run_expr(*l) < self.run_expr(*r)) as i64,
+            Expr::LessEqual(l, r) => (self.run_expr(*l) <= self.run_expr(*r)) as i64,
+            Expr::Greater(l, r) => (self.run_expr(*l) > self.run_expr(*r)) as i64,
+            Expr::GreaterEqual(l, r) => (self.run_expr(*l) >= self.run_expr(*r)) as i64,
+            Expr::EqualEqual(l, r) => (self.run_expr(*l) == self.run_expr(*r)) as i64,
+            Expr::NotEqual(l, r) => (self.run_expr(*l) != self.run_expr(*r)) as i64,
         }
     }
 }

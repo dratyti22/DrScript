@@ -1,7 +1,8 @@
 use logos::Logos;
 
 #[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(skip r"[ \t\n\f]+")]
+#[logos(skip r"[\t\n\f]+")]
+#[logos(skip r"//[^\n]*")]
 pub enum Token {
     #[token("var")]
     Var,
@@ -27,6 +28,18 @@ pub enum Token {
     LParen,
     #[token(")")]
     RParen,
+    #[token("<")]
+    Less,
+    #[token("<=")]
+    LessEqual,
+    #[token(">")]
+    Greater,
+    #[token(">=")]
+    GreaterEqual,
+    #[token("==")]
+    Equal,
+    #[token("!=")]
+    NotEqual,
 }
 
 pub fn lex(input: &str) -> Vec<Token> {
