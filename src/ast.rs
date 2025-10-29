@@ -26,4 +26,9 @@ pub enum Stmt {
         name: String,
         value: Expr,
     },
+    If {
+        cond: Expr,
+        then_branch: Vec<Stmt>,
+        else_branch: Option<Vec<Stmt>>,
+    },
 }

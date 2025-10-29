@@ -11,11 +11,15 @@ fn main() {
         var x = 5;
         var y = 10;
 
-        print(x < y); // 1
-        print(x > y); // 0
-        print(x == 5); // 1
-        print(y != 5); // 1
-        print(y >= 10); // 1
+        if x>y {
+            print(1);
+        }
+        else {
+            print(2);
+        }
+        if x>y {
+            print(3);
+        }
     "#;
     let y = lexer::lex(x);
     println!("{:?}", y);

@@ -40,6 +40,14 @@ pub enum Token {
     Equal,
     #[token("!=")]
     NotEqual,
+    #[token("if")]
+    If,
+    #[token("else")]
+    Else,
+    #[token("{")]
+    LBrace,
+    #[token("}")]
+    RBrace,
 }
 
 pub fn lex(input: &str) -> Vec<Token> {

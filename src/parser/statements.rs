@@ -6,11 +6,12 @@ impl Parser {
     /// проверка того что приходит на вход
     pub(super) fn parse_stmt(&mut self) -> Stmt {
         match self.peek() {
+            Some(Token::If) => self.parse_if(),
             Some(Token::Var) | Some(Token::Ver) => self.parse_var_decl(),
             Some(Token::Ident(name)) if name == "print" => self.parse_print(),
             Some(Token::Ident(_)) => self.parse_assign(),
 
-            _ => panic!("Ожидал ось имя переменной"),
+            other => panic!("Ожидалось имя переменной {:?}", other),
         }
     }
     /// парсинг переменной
@@ -64,5 +65,47 @@ impl Parser {
         let value = self.parse_expr();
         self.expect(&Token::Semicolon);
         Stmt::Assign { name, value }
+    }
+    /// парсинг if
+    fn parse_if(&mut self) -> Stmt {
+        self.expect(&Token::If);
+
+        let cond = self.parse_expr();
+        self.expect(&Token::LBrace);
+        let then_branch = self.parse_block();
+        self.expect(&Token::RBrace);
+
+        let else_branch = if self.peek() == Some(&Token::Else) {
+            self.advance(); // пропускаем else
+            self.expect(&Token::LBrace);
+            let block = Some(self.parse_block());
+            self.expect(&Token::RBrace);
+            block
+        } else {
+            None
+        };
+
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        }
+    }
+    fn parse_block(&mut self) -> Vec<Stmt> {
+        let mut stmts = Vec::new();
+
+        while let Some(token) = self.peek() {
+            if token == &Token::RBrace {
+                break;
+            }
+
+            match token {
+                Token::Ident(name) if name == "print" => {
+                    stmts.push(self.parse_print());
+                }
+                _ => stmts.push(self.parse_stmt()),
+            }
+        }
+        stmts
     }
 }

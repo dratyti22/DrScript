@@ -17,10 +17,11 @@ impl Parser {
     /// проверка и потребление токена если совподают
     pub(super) fn match_token(&mut self, token: &Token) -> bool {
         if let Some(current) = self.peek()
-            && std::mem::discriminant(current) == std::mem::discriminant(token) {
-                self.advance();
-                return true;
-            }
+            && std::mem::discriminant(current) == std::mem::discriminant(token)
+        {
+            self.advance();
+            return true;
+        }
         false
     }
     /// если токен не совпадает, то паника

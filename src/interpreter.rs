@@ -52,6 +52,21 @@ impl Interpretation {
                     },
                 );
             }
+            Stmt::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                if self.run_expr(cond) != 0 {
+                    for stmt in then_branch {
+                        self.run_stmt(stmt);
+                    }
+                } else if let Some(branch) = else_branch {
+                    for stmt in branch {
+                        self.run_stmt(stmt);
+                    }
+                }
+            }
             Stmt::Print(expr) => println!("{:?}", self.run_expr(expr)),
         }
     }
