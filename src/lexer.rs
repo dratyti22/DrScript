@@ -48,6 +48,14 @@ pub enum Token {
     LBrace,
     #[token("}")]
     RBrace,
+    #[token("while")]
+    While,
+    #[token("for")]
+    For,
+    #[token("++")]
+    PlusPlus,
+    #[token("--")]
+    MinusMinus,
 }
 
 pub fn lex(input: &str) -> Vec<Token> {

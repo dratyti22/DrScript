@@ -6,6 +6,11 @@ impl Parser {
     pub(super) fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
+    /// получает следующий токен
+    pub(super) fn peek_next(&self) -> Option<&Token> {
+        self.tokens.get(self.pos + 1)
+    }
+
     ///сдвигает позицию на 1 и возвращает предыдущий токен
     pub(super) fn advance(&mut self) -> Option<Token> {
         if self.pos < self.tokens.len() {

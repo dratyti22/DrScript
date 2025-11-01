@@ -12,10 +12,15 @@ pub enum Expr {
     GreaterEqual(Box<Expr>, Box<Expr>),
     EqualEqual(Box<Expr>, Box<Expr>),
     NotEqual(Box<Expr>, Box<Expr>),
+    PreInc(String),
+    PreDec(String),
+    PostInc(String),
+    PostDec(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stmt {
+    Expr(Expr),
     Print(Expr),
     VerDecl {
         name: String,
@@ -30,5 +35,15 @@ pub enum Stmt {
         cond: Expr,
         then_branch: Vec<Stmt>,
         else_branch: Option<Vec<Stmt>>,
+    },
+    While {
+        cond: Expr,
+        body: Vec<Stmt>,
+    },
+    For {
+        init: Box<Stmt>,
+        cond: Expr,
+        incr: Option<Expr>,
+        body: Vec<Stmt>,
     },
 }

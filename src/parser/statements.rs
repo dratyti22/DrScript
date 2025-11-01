@@ -7,17 +7,27 @@ impl Parser {
     pub(super) fn parse_stmt(&mut self) -> Stmt {
         match self.peek() {
             Some(Token::If) => self.parse_if(),
+            Some(Token::While) => self.parse_while(),
+            Some(Token::For) => self.parse_for(),
             Some(Token::Var) | Some(Token::Ver) => self.parse_var_decl(),
             Some(Token::Ident(name)) if name == "print" => self.parse_print(),
-            Some(Token::Ident(_)) => self.parse_assign(),
+            Some(Token::Ident(_)) => {
+                if self.peek_next() == Some(&Token::Assign) {
+                    self.parse_assign()
+                } else {
+                    let expr = self.parse_expr();
+                    self.expect(&Token::Semicolon);
+                    Stmt::Expr(expr)
+                }
+            }
 
             other => panic!("Ожидалось имя переменной {:?}", other),
         }
     }
     /// парсинг переменной
     pub(super) fn parse_var_decl(&mut self) -> Stmt {
-        let mutable = self.advance(); // тут получаем тип переменной
-        let x = mutable.unwrap();
+        let token = self.advance(); // тут получаем тип переменной
+        let x = token.unwrap();
         match x {
             Token::Var => {
                 let name = match self.advance() {
@@ -91,6 +101,41 @@ impl Parser {
             else_branch,
         }
     }
+
+    fn parse_while(&mut self) -> Stmt {
+        self.expect(&Token::While);
+        let cond = self.parse_expr();
+        self.expect(&Token::LBrace);
+        let body = self.parse_block();
+        self.expect(&Token::RBrace);
+        Stmt::While { cond, body }
+    }
+    fn parse_for(&mut self) -> Stmt {
+        self.expect(&Token::For);
+        self.expect(&Token::LParen);
+
+        let init = self.parse_stmt();
+
+        let cond = self.parse_expr();
+        self.expect(&Token::Semicolon);
+        let incr = if self.peek() == Some(&Token::RParen) {
+            None
+        } else {
+            Some(self.parse_expr())
+        };
+        self.expect(&Token::RParen);
+        self.expect(&Token::LBrace);
+        let body = self.parse_block();
+        self.expect(&Token::RBrace);
+
+        Stmt::For {
+            init: Box::new(init),
+            cond,
+            incr,
+            body,
+        }
+    }
+
     fn parse_block(&mut self) -> Vec<Stmt> {
         let mut stmts = Vec::new();
 

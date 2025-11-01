@@ -38,6 +38,7 @@ impl Interpretation {
                 if self.vars.contains_key(&name) {
                     if self.vars.get(&name).unwrap().mutable {
                         self.vars.get_mut(&name).unwrap().value = self.run_expr(value.clone());
+                        return;
                     } else {
                         panic!("Variable {} is not mutable", name);
                     }
@@ -67,10 +68,36 @@ impl Interpretation {
                     }
                 }
             }
+            Stmt::While { cond, body } => {
+                while self.run_expr(cond.clone()) != 0 {
+                    for stmt in body.clone() {
+                        self.run_stmt(stmt);
+                    }
+                }
+            }
+            Stmt::For {
+                init,
+                cond,
+                incr,
+                body,
+            } => {
+                self.run_stmt(*init);
+                while self.run_expr(cond.clone()) != 0 {
+                    for stmt in body.clone() {
+                        self.run_stmt(stmt);
+                    }
+                    if let Some(expr) = incr.clone() {
+                        self.run_expr(expr);
+                    }
+                }
+            }
             Stmt::Print(expr) => println!("{:?}", self.run_expr(expr)),
+            Stmt::Expr(expr) => {
+                self.run_expr(expr);
+            }
         }
     }
-    fn run_expr(&self, expr: Expr) -> i64 {
+    fn run_expr(&mut self, expr: Expr) -> i64 {
         match expr {
             Expr::Num(n) => n,
             Expr::Ident(n) => {
@@ -91,6 +118,31 @@ impl Interpretation {
             Expr::GreaterEqual(l, r) => (self.run_expr(*l) >= self.run_expr(*r)) as i64,
             Expr::EqualEqual(l, r) => (self.run_expr(*l) == self.run_expr(*r)) as i64,
             Expr::NotEqual(l, r) => (self.run_expr(*l) != self.run_expr(*r)) as i64,
+
+            Expr::PreInc(n) => {
+                let val = self.vars.get_mut(&n).unwrap();
+                let new_val = val.value + 1;
+                val.value = new_val;
+                new_val
+            }
+            Expr::PreDec(n) => {
+                let val = self.vars.get_mut(&n).unwrap();
+                let new_val = val.value - 1;
+                val.value = new_val;
+                new_val
+            }
+            Expr::PostInc(n) => {
+                let val = self.vars.get_mut(&n).unwrap();
+                let old_val = val.value;
+                val.value += 1;
+                old_val
+            }
+            Expr::PostDec(n) => {
+                let val = self.vars.get_mut(&n).unwrap();
+                let old_val = val.value;
+                val.value -= 1;
+                old_val
+            }
         }
     }
 }
