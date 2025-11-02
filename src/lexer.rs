@@ -56,6 +56,12 @@ pub enum Token {
     PlusPlus,
     #[token("--")]
     MinusMinus,
+    #[token("fun")]
+    Fun,
+    #[token("return")]
+    Return,
+    #[token(",")]
+    Comma,
 }
 
 pub fn lex(input: &str) -> Vec<Token> {

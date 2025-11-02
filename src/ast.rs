@@ -16,6 +16,10 @@ pub enum Expr {
     PreDec(String),
     PostInc(String),
     PostDec(String),
+    Call {
+        call: Box<Expr>,
+        args: Vec<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,4 +50,10 @@ pub enum Stmt {
         incr: Option<Expr>,
         body: Vec<Stmt>,
     },
+    Func {
+        name: String,
+        params: Vec<String>,
+        body: Vec<Stmt>,
+    },
+    Return(Expr)
 }
