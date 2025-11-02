@@ -7,24 +7,34 @@ struct Value {
     mutable: bool,
 }
 
+enum ExecReturn {
+    Return(i64),
+    None,
+}
+
 #[derive(Debug, Clone)]
 pub struct Interpretation {
     vars: HashMap<String, Value>,
+    funcs: HashMap<String, (Vec<String>, Vec<Stmt>)>,
 }
 
 impl Interpretation {
     pub fn new() -> Self {
         Self {
             vars: HashMap::new(),
+            funcs: HashMap::new(),
         }
     }
     pub fn run(&mut self, stmts: Vec<Stmt>) {
         for stmt in stmts {
-            self.run_stmt(stmt)
+            match self.run_stmt(stmt) {
+                ExecReturn::Return(_) => break,
+                ExecReturn::None => continue,
+            }
         }
     }
 
-    fn run_stmt(&mut self, stmt: Stmt) {
+    fn run_stmt(&mut self, stmt: Stmt) -> ExecReturn {
         match stmt {
             Stmt::VerDecl {
                 name,
@@ -33,12 +43,13 @@ impl Interpretation {
             } => {
                 let v = self.run_expr(value);
                 self.vars.insert(name, Value { value: v, mutable });
+                ExecReturn::None
             }
             Stmt::Assign { name, value } => {
                 if self.vars.contains_key(&name) {
                     if self.vars.get(&name).unwrap().mutable {
                         self.vars.get_mut(&name).unwrap().value = self.run_expr(value.clone());
-                        return;
+                        return ExecReturn::None;
                     } else {
                         panic!("Variable {} is not mutable", name);
                     }
@@ -52,6 +63,7 @@ impl Interpretation {
                         mutable: false,
                     },
                 );
+                ExecReturn::None
             }
             Stmt::If {
                 cond,
@@ -60,20 +72,31 @@ impl Interpretation {
             } => {
                 if self.run_expr(cond) != 0 {
                     for stmt in then_branch {
-                        self.run_stmt(stmt);
+                        match self.run_stmt(stmt) {
+                            ExecReturn::Return(v) => return ExecReturn::Return(v),
+                            ExecReturn::None => {}
+                        }
                     }
                 } else if let Some(branch) = else_branch {
                     for stmt in branch {
-                        self.run_stmt(stmt);
+                        match self.run_stmt(stmt) {
+                            ExecReturn::Return(v) => return ExecReturn::Return(v),
+                            ExecReturn::None => {}
+                        }
                     }
                 }
+                ExecReturn::None
             }
             Stmt::While { cond, body } => {
                 while self.run_expr(cond.clone()) != 0 {
                     for stmt in body.clone() {
-                        self.run_stmt(stmt);
+                        match self.run_stmt(stmt) {
+                            ExecReturn::Return(v) => return ExecReturn::Return(v),
+                            ExecReturn::None => {}
+                        }
                     }
                 }
+                ExecReturn::None
             }
             Stmt::For {
                 init,
@@ -82,18 +105,35 @@ impl Interpretation {
                 body,
             } => {
                 self.run_stmt(*init);
+
                 while self.run_expr(cond.clone()) != 0 {
                     for stmt in body.clone() {
-                        self.run_stmt(stmt);
+                        match self.run_stmt(stmt) {
+                            ExecReturn::Return(v) => return ExecReturn::Return(v),
+                            ExecReturn::None => {}
+                        }
                     }
                     if let Some(expr) = incr.clone() {
                         self.run_expr(expr);
                     }
                 }
+                ExecReturn::None
             }
-            Stmt::Print(expr) => println!("{:?}", self.run_expr(expr)),
+            Stmt::Print(expr) => {
+                println!("{:?}", self.run_expr(expr));
+                ExecReturn::None
+            }
             Stmt::Expr(expr) => {
                 self.run_expr(expr);
+                ExecReturn::None
+            }
+            Stmt::Func { name, params, body } => {
+                self.funcs.insert(name, (params, body));
+                ExecReturn::None
+            }
+            Stmt::Return(expr) => {
+                let val = self.run_expr(expr);
+                ExecReturn::Return(val)
             }
         }
     }
@@ -142,6 +182,48 @@ impl Interpretation {
                 let old_val = val.value;
                 val.value -= 1;
                 old_val
+            }
+            Expr::Call { call, args } => {
+                let name = match *call {
+                    Expr::Ident(n) => n,
+                    _ => panic!("Expected identifier"),
+                };
+                // получаем параметры и тело функции
+                let (params, body) = self.funcs.get(&name).unwrap().clone();
+                // сравниваем что бы аргументов было столькоже сколько и принмает функции
+                if params.len() != args.len() {
+                    panic!(
+                        "Func {} expected: {} but got args: {}",
+                        name,
+                        params.len(),
+                        args.len()
+                    );
+                }
+                //создаем локальные переменные
+                let mut local = Interpretation {
+                    vars: HashMap::new(),
+                    funcs: self.funcs.clone(),
+                };
+                // заполняем локальные переменные данными
+                for (i, arg) in params.into_iter().zip(args.into_iter()) {
+                    local.vars.insert(
+                        i,
+                        Value {
+                            value: self.run_expr(arg),
+                            mutable: false,
+                        },
+                    );
+                }
+                // выполняем тело функции
+                for stmt in body {
+                    match local.run_stmt(stmt) {
+                        ExecReturn::Return(v) => {
+                            return v;
+                        }
+                        ExecReturn::None => continue,
+                    }
+                }
+                0
             }
         }
     }

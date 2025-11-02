@@ -82,7 +82,14 @@ for (i=0;i<4;i++) {
 1
 ```
 
-
+### Функция
+```
+fun add(a, b) {
+    return a + b;
+}
+var x = add(1, 2);
+print(x); // вывод 3
+```
 
 
 

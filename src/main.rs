@@ -8,12 +8,15 @@ use interpreter::Interpretation;
 
 fn main() {
     let x = r#"
-        ver x = 5;
-        var y = 10;
-
-        for (i=0;i<10;i++) {
-            print(x);
+        fun add(n) {
+            if n <= 1 {
+                return 1;
+            } else {
+                return n * add(n-1);
+            }
         }
+
+        print(add(10));
     "#;
     let y = lexer::lex(x);
     println!("{:?}", y);

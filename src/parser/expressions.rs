@@ -154,7 +154,25 @@ impl Parser {
     pub(super) fn parse_primary(&mut self) -> Expr {
         match self.advance() {
             Some(Token::Number(n)) => Expr::Num(n),
-            Some(Token::Ident(name)) => Expr::Ident(name),
+            Some(Token::Ident(name)) => {
+                if self.peek() == Some(&Token::LParen) {
+                    self.advance();
+                    let mut args = Vec::new();
+                    while self.peek() != Some(&Token::RParen) {
+                        args.push(self.parse_expr());
+                        if self.peek() == Some(&Token::Comma) {
+                            self.advance();
+                        }else {
+                            break
+                        }
+                    }
+                    self.expect(&Token::RParen);
+                    return Expr::Call{call: Box::new(Expr::Ident(name)), args};
+
+                }else {
+                    Expr::Ident(name)
+                }
+            },
             Some(Token::LParen) => {
                 let expr = self.parse_expr();
                 self.expect(&Token::RParen);

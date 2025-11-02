@@ -9,6 +9,8 @@ impl Parser {
             Some(Token::If) => self.parse_if(),
             Some(Token::While) => self.parse_while(),
             Some(Token::For) => self.parse_for(),
+            Some(Token::Fun) => self.parse_fun(),
+            Some(Token::Return) => self.parse_return(),
             Some(Token::Var) | Some(Token::Ver) => self.parse_var_decl(),
             Some(Token::Ident(name)) if name == "print" => self.parse_print(),
             Some(Token::Ident(_)) => {
@@ -76,6 +78,45 @@ impl Parser {
         self.expect(&Token::Semicolon);
         Stmt::Assign { name, value }
     }
+    /// парсинг функции
+    fn parse_fun(&mut self) -> Stmt {
+        self.expect(&Token::Fun);
+        let name = match self.advance() {
+            Some(Token::Ident(name)) => name,
+            other => panic!("должно быть имя функции но полученно: {:?}", other),
+        };
+        self.expect(&Token::LParen);
+        let mut params = Vec::new();
+
+        if self.peek() != Some(&Token::RParen) {
+            loop {
+                let param = match self.advance() {
+                    Some(Token::Ident(n)) => n,
+                    other => panic!("Полученно: {:?} вместо имени аргумента", other),
+                };
+                params.push(param);
+                if self.peek() == Some(&Token::Comma) {
+                    self.advance();
+                }
+                if self.peek() == Some(&Token::RParen) {
+                    break;
+                }
+            }
+        }
+
+        self.expect(&Token::RParen);
+        self.expect(&Token::LBrace);
+        let body = self.parse_block();
+        self.expect(&Token::RBrace);
+        Stmt::Func { name, params, body }
+    }
+    fn parse_return(&mut self) -> Stmt {
+        self.expect(&Token::Return);
+        let expr = self.parse_expr();
+        self.expect(&Token::Semicolon);
+        Stmt::Return(expr)
+    }
+
     /// парсинг if
     fn parse_if(&mut self) -> Stmt {
         self.expect(&Token::If);
