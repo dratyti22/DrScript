@@ -1,8 +1,8 @@
 use crate::ast::Expr;
 use crate::lexer::Token;
-use crate::parser::Parser;
+use crate::parser::ParserToken;
 
-impl Parser {
+impl ParserToken {
     /// получение выражения за =
     pub(super) fn parse_expr(&mut self) -> Expr {
         let mut left = self.parse_less_greater();
@@ -162,17 +162,19 @@ impl Parser {
                         args.push(self.parse_expr());
                         if self.peek() == Some(&Token::Comma) {
                             self.advance();
-                        }else {
-                            break
+                        } else {
+                            break;
                         }
                     }
                     self.expect(&Token::RParen);
-                    return Expr::Call{call: Box::new(Expr::Ident(name)), args};
-
-                }else {
+                     Expr::Call {
+                        call: Box::new(Expr::Ident(name)),
+                        args,
+                    }
+                } else {
                     Expr::Ident(name)
                 }
-            },
+            }
             Some(Token::LParen) => {
                 let expr = self.parse_expr();
                 self.expect(&Token::RParen);

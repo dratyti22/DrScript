@@ -5,12 +5,12 @@ mod utils;
 use crate::ast::Stmt;
 use crate::lexer::Token;
 
-pub struct Parser {
+pub struct ParserToken {
     tokens: Vec<Token>,
     pos: usize,
 }
 
-impl Parser {
+impl ParserToken {
     pub fn new(token: Vec<Token>) -> Self {
         Self {
             tokens: token,

@@ -16,10 +16,7 @@ pub enum Expr {
     PreDec(String),
     PostInc(String),
     PostDec(String),
-    Call {
-        call: Box<Expr>,
-        args: Vec<Expr>,
-    },
+    Call { call: Box<Expr>, args: Vec<Expr> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,5 +52,5 @@ pub enum Stmt {
         params: Vec<String>,
         body: Vec<Stmt>,
     },
-    Return(Expr)
+    Return(Expr),
 }

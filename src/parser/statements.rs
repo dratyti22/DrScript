@@ -1,8 +1,8 @@
 use crate::ast::Stmt;
 use crate::lexer::Token;
-use crate::parser::Parser;
+use crate::parser::ParserToken;
 
-impl Parser {
+impl ParserToken {
     /// проверка того что приходит на вход
     pub(super) fn parse_stmt(&mut self) -> Stmt {
         match self.peek() {

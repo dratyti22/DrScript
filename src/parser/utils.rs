@@ -1,7 +1,7 @@
 use crate::lexer::Token;
-use crate::parser::Parser;
+use crate::parser::ParserToken;
 
-impl Parser {
+impl ParserToken {
     /// получает текущий токен
     pub(super) fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.pos)

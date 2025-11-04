@@ -1,31 +1,26 @@
-use crate::parser::Parser;
+use crate::parser::ParserToken;
+use clap::Parser;
 
 mod ast;
+mod cli;
 mod interpreter;
 mod lexer;
 mod parser;
+use cli::Cli;
 use interpreter::Interpretation;
+use std::fs::read_to_string;
 
 fn main() {
-    let x = r#"
-        fun add(n) {
-            if n <= 1 {
-                return 1;
-            } else {
-                return n * add(n-1);
-            }
-        }
+    let cli = Cli::parse();
+    let code = read_to_string(&cli.file).unwrap_or_else(|_| panic!("File {} not found", cli.file));
 
-        print(add(10));
-    "#;
-    let y = lexer::lex(x);
-    println!("{:?}", y);
-    println!("----------");
-
-    let mut parser = Parser::new(y);
+    let lexer = lexer::lex(code.as_str());
+    // println!("{:?}", lexer);
+    // println!("----------");
+    let mut parser = ParserToken::new(lexer);
     let ast = parser.parse();
-    println!("{:?}", ast);
-    println!("----------");
+    // println!("{:?}", ast);
+    // println!("----------");
 
     let mut i = Interpretation::new();
     i.run(ast);

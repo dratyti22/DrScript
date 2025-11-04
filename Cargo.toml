@@ -1,7 +1,14 @@
 [package]
 name = "dr-script"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+authors = ["dratyti"]
+description = "Простой язык программирования с минималистичным синтаксисом"
+license = "MIT"
+repository = "https://github.com/dratyti/dr-script"
+keywords = ["programming-language", "interpreter", "rust"]
+categories = ["development-tools"]
 
 [dependencies]
 logos = "0.15.1"
+clap = {version = "4.5.51", features = ["derive"]}

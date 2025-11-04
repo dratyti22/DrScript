@@ -1,6 +1,9 @@
-var x = 6;
-ver y = 8;
-print(x*y);
-y = 10 + x * (1+2);
+fun add(n) {
+    if n <= 1 {
+        return 1;
+    } else {
+        return n * add(n-1);
+    }
+}
 
-print(y+2);
+print(add(10));
