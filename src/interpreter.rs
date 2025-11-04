@@ -16,6 +16,7 @@ enum ExecReturn {
 pub struct Interpretation {
     vars: HashMap<String, Value>,
     funcs: HashMap<String, (Vec<String>, Vec<Stmt>)>,
+    output: String,
 }
 
 impl Interpretation {
@@ -23,15 +24,17 @@ impl Interpretation {
         Self {
             vars: HashMap::new(),
             funcs: HashMap::new(),
+            output: String::new(),
         }
     }
-    pub fn run(&mut self, stmts: Vec<Stmt>) {
+    pub fn run(&mut self, stmts: Vec<Stmt>)->String {
         for stmt in stmts {
             match self.run_stmt(stmt) {
                 ExecReturn::Return(_) => break,
                 ExecReturn::None => continue,
             }
         }
+        self.output.clone()
     }
 
     fn run_stmt(&mut self, stmt: Stmt) -> ExecReturn {
@@ -120,7 +123,8 @@ impl Interpretation {
                 ExecReturn::None
             }
             Stmt::Print(expr) => {
-                println!("{:?}", self.run_expr(expr));
+                let r = self.run_expr(expr);
+                self.output.push_str(&format!("{}\n",r));
                 ExecReturn::None
             }
             Stmt::Expr(expr) => {
@@ -203,6 +207,7 @@ impl Interpretation {
                 let mut local = Interpretation {
                     vars: HashMap::new(),
                     funcs: self.funcs.clone(),
+                    output: self.output.clone(),
                 };
                 // заполняем локальные переменные данными
                 for (i, arg) in params.into_iter().zip(args.into_iter()) {
