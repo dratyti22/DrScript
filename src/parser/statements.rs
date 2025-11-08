@@ -155,7 +155,7 @@ impl ParserToken {
         self.expect(&Token::For);
         self.expect(&Token::LParen);
 
-        let init = self.parse_stmt();
+        let init = self.parse_name_in_for();
 
         let cond = self.parse_expr();
         self.expect(&Token::Semicolon);
@@ -193,5 +193,20 @@ impl ParserToken {
             }
         }
         stmts
+    }
+    /// парсинг переменной для for что бы была мутабельной
+    fn parse_name_in_for(&mut self) -> Stmt {
+        let name = match self.advance() {
+            Some(Token::Ident(name)) => name, // тут получаем имя переменной
+            _ => panic!("Ожидал имя переменной"),
+        };
+        self.expect(&Token::Assign); // тут проверяем что после имени идет =
+        let value = self.parse_expr(); // тут парсим выражение
+        self.expect(&Token::Semicolon); // тут проверяем что после выражения идет ;
+        Stmt::VerDecl {
+            name,
+            value,
+            mutable: true,
+        }
     }
 }
