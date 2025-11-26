@@ -5,5 +5,5 @@ fun add(n) {
         return n * add(n-1);
     }
 }
-
 print(add(10));
+print("asdfd");

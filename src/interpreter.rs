@@ -1,5 +1,9 @@
 use crate::ast::{Expr, Stmt};
 use std::collections::HashMap;
+use std::fmt;
+use crate::type_error::RuntimeError;
+
+pub type RuntimeResult<T> = Result<T, RuntimeError>;
 
 #[derive(Debug, Clone)]
 struct Value {
@@ -7,6 +11,7 @@ struct Value {
     mutable: bool,
 }
 
+#[derive(Debug)]
 enum ExecReturn {
     Return(i64),
     None,
@@ -25,205 +30,245 @@ impl Interpretation {
             funcs: HashMap::new(),
         }
     }
-    pub fn run(&mut self, stmts: Vec<Stmt>) {
+
+    pub fn run(&mut self, stmts: Vec<Stmt>) -> RuntimeResult<String> {
+        let output = String::new();
+
         for stmt in stmts {
-            match self.run_stmt(stmt) {
+            match self.run_stmt(stmt)? {
                 ExecReturn::Return(_) => break,
-                ExecReturn::None => continue,
+                ExecReturn::None => {}
             }
         }
+
+        Ok(output)
     }
 
-    fn run_stmt(&mut self, stmt: Stmt) -> ExecReturn {
+    fn run_stmt(&mut self, stmt: Stmt) -> RuntimeResult<ExecReturn> {
         match stmt {
             Stmt::VerDecl {
                 name,
                 value,
                 mutable,
             } => {
-                let v = self.run_expr(value);
+                let v = self.run_expr(value)?;
                 self.vars.insert(name, Value { value: v, mutable });
-                ExecReturn::None
+                Ok(ExecReturn::None)
             }
+
             Stmt::Assign { name, value } => {
-                if self.vars.contains_key(&name) {
-                    if self.vars.get(&name).unwrap().mutable {
-                        self.vars.get_mut(&name).unwrap().value = self.run_expr(value.clone());
-                        return ExecReturn::None;
-                    } else {
-                        panic!("Variable {} is not mutable", name);
+                let new_val = self.run_expr(value)?;
+
+                match self.vars.get_mut(&name) {
+                    Some(v) => {
+                        if !v.mutable {
+                            return Err(RuntimeError::ImmutableAssignment(name));
+                        }
+                        v.value = new_val;
+                    }
+                    None => {
+                        self.vars.insert(
+                            name,
+                            Value {
+                                value: new_val,
+                                mutable: false,
+                            },
+                        );
                     }
                 }
-                let v = self.run_expr(value);
-
-                self.vars.insert(
-                    name,
-                    Value {
-                        value: v,
-                        mutable: false,
-                    },
-                );
-                ExecReturn::None
+                Ok(ExecReturn::None)
             }
+
             Stmt::If {
                 cond,
                 then_branch,
                 else_branch,
             } => {
-                if self.run_expr(cond) != 0 {
+                if self.run_expr(cond)? != 0 {
                     for stmt in then_branch {
-                        match self.run_stmt(stmt) {
-                            ExecReturn::Return(v) => return ExecReturn::Return(v),
+                        match self.run_stmt(stmt)? {
+                            ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
                     }
                 } else if let Some(branch) = else_branch {
                     for stmt in branch {
-                        match self.run_stmt(stmt) {
-                            ExecReturn::Return(v) => return ExecReturn::Return(v),
+                        match self.run_stmt(stmt)? {
+                            ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
                     }
                 }
-                ExecReturn::None
+                Ok(ExecReturn::None)
             }
+
             Stmt::While { cond, body } => {
-                while self.run_expr(cond.clone()) != 0 {
+                while self.run_expr(cond.clone())? != 0 {
                     for stmt in body.clone() {
-                        match self.run_stmt(stmt) {
-                            ExecReturn::Return(v) => return ExecReturn::Return(v),
+                        match self.run_stmt(stmt)? {
+                            ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
                     }
                 }
-                ExecReturn::None
+                Ok(ExecReturn::None)
             }
+
             Stmt::For {
                 init,
                 cond,
                 incr,
                 body,
             } => {
-                self.run_stmt(*init);
+                self.run_stmt(*init)?;
 
-                while self.run_expr(cond.clone()) != 0 {
+                while self.run_expr(cond.clone())? != 0 {
                     for stmt in body.clone() {
-                        match self.run_stmt(stmt) {
-                            ExecReturn::Return(v) => return ExecReturn::Return(v),
+                        match self.run_stmt(stmt)? {
+                            ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
                     }
-                    if let Some(expr) = incr.clone() {
-                        self.run_expr(expr);
+
+                    if let Some(e) = incr.clone() {
+                        self.run_expr(e)?;
                     }
                 }
-                ExecReturn::None
+                Ok(ExecReturn::None)
             }
+
             Stmt::Print(expr) => {
-                println!("{:?}", self.run_expr(expr));
-                ExecReturn::None
+                let value = self.run_expr(expr)?;
+                println!("{}", value);
+                Ok(ExecReturn::None)
             }
+
             Stmt::Expr(expr) => {
-                self.run_expr(expr);
-                ExecReturn::None
+                self.run_expr(expr)?;
+                Ok(ExecReturn::None)
             }
+
             Stmt::Func { name, params, body } => {
                 self.funcs.insert(name, (params, body));
-                ExecReturn::None
+                Ok(ExecReturn::None)
             }
+
             Stmt::Return(expr) => {
-                let val = self.run_expr(expr);
-                ExecReturn::Return(val)
+                let value = self.run_expr(expr)?;
+                Ok(ExecReturn::Return(value))
             }
         }
     }
-    fn run_expr(&mut self, expr: Expr) -> i64 {
-        match expr {
-            Expr::Num(n) => n,
-            Expr::Ident(n) => {
-                if !self.vars.contains_key(&n) {
-                    panic!("Variable {} not declared, Ident", n);
-                } else {
-                    let a = self.vars.get(&n).unwrap().clone();
-                    a.value
-                }
-            }
-            Expr::Plus(l, r) => self.run_expr(*l) + self.run_expr(*r),
-            Expr::Minus(l, r) => self.run_expr(*l) - self.run_expr(*r),
-            Expr::Star(l, r) => self.run_expr(*l) * self.run_expr(*r),
-            Expr::Slash(l, r) => self.run_expr(*l) / self.run_expr(*r),
-            Expr::Less(l, r) => (self.run_expr(*l) < self.run_expr(*r)) as i64,
-            Expr::LessEqual(l, r) => (self.run_expr(*l) <= self.run_expr(*r)) as i64,
-            Expr::Greater(l, r) => (self.run_expr(*l) > self.run_expr(*r)) as i64,
-            Expr::GreaterEqual(l, r) => (self.run_expr(*l) >= self.run_expr(*r)) as i64,
-            Expr::EqualEqual(l, r) => (self.run_expr(*l) == self.run_expr(*r)) as i64,
-            Expr::NotEqual(l, r) => (self.run_expr(*l) != self.run_expr(*r)) as i64,
 
-            Expr::PreInc(n) => {
-                let val = self.vars.get_mut(&n).unwrap();
-                let new_val = val.value + 1;
-                val.value = new_val;
-                new_val
+    fn run_expr(&mut self, expr: Expr) -> RuntimeResult<i64> {
+        match expr {
+            Expr::Num(n) => Ok(n),
+
+            Expr::Ident(name) => self
+                .vars
+                .get(&name)
+                .map(|v| v.value)
+                .ok_or(RuntimeError::UndefinedVariable(name)),
+
+            Expr::Plus(l, r) => Ok(self.run_expr(*l)? + self.run_expr(*r)?),
+            Expr::Minus(l, r) => Ok(self.run_expr(*l)? - self.run_expr(*r)?),
+            Expr::Star(l, r) => Ok(self.run_expr(*l)? * self.run_expr(*r)?),
+
+            Expr::Slash(l, r) => {
+                let rhs = self.run_expr(*r)?;
+                if rhs == 0 {
+                    return Err(RuntimeError::DivisionByZero);
+                }
+                Ok(self.run_expr(*l)? / rhs)
             }
-            Expr::PreDec(n) => {
-                let val = self.vars.get_mut(&n).unwrap();
-                let new_val = val.value - 1;
-                val.value = new_val;
-                new_val
+
+            Expr::Less(l, r) => Ok((self.run_expr(*l)? < self.run_expr(*r)?) as i64),
+            Expr::LessEqual(l, r) => Ok((self.run_expr(*l)? <= self.run_expr(*r)?) as i64),
+            Expr::Greater(l, r) => Ok((self.run_expr(*l)? > self.run_expr(*r)?) as i64),
+            Expr::GreaterEqual(l, r) => Ok((self.run_expr(*l)? >= self.run_expr(*r)?) as i64),
+            Expr::EqualEqual(l, r) => Ok((self.run_expr(*l)? == self.run_expr(*r)?) as i64),
+            Expr::NotEqual(l, r) => Ok((self.run_expr(*l)? != self.run_expr(*r)?) as i64),
+
+            Expr::PreInc(name) => {
+                let v = self
+                    .vars
+                    .get_mut(&name)
+                    .ok_or(RuntimeError::UndefinedVariable(name.clone()))?;
+                v.value += 1;
+                Ok(v.value)
             }
-            Expr::PostInc(n) => {
-                let val = self.vars.get_mut(&n).unwrap();
-                let old_val = val.value;
-                val.value += 1;
-                old_val
+
+            Expr::PreDec(name) => {
+                let v = self
+                    .vars
+                    .get_mut(&name)
+                    .ok_or(RuntimeError::UndefinedVariable(name.clone()))?;
+                v.value -= 1;
+                Ok(v.value)
             }
-            Expr::PostDec(n) => {
-                let val = self.vars.get_mut(&n).unwrap();
-                let old_val = val.value;
-                val.value -= 1;
-                old_val
+
+            Expr::PostInc(name) => {
+                let v = self
+                    .vars
+                    .get_mut(&name)
+                    .ok_or(RuntimeError::UndefinedVariable(name.clone()))?;
+                let old = v.value;
+                v.value += 1;
+                Ok(old)
             }
+
+            Expr::PostDec(name) => {
+                let v = self
+                    .vars
+                    .get_mut(&name)
+                    .ok_or(RuntimeError::UndefinedVariable(name.clone()))?;
+                let old = v.value;
+                v.value -= 1;
+                Ok(old)
+            }
+
             Expr::Call { call, args } => {
                 let name = match *call {
                     Expr::Ident(n) => n,
-                    _ => panic!("Expected identifier"),
+                    _ => return Err(RuntimeError::UndefinedFunction("<?>".into())),
                 };
-                // получаем параметры и тело функции
-                let (params, body) = self.funcs.get(&name).unwrap().clone();
-                // сравниваем что бы аргументов было столькоже сколько и принмает функции
+
+                let (params, body) = self
+                    .funcs
+                    .get(&name)
+                    .cloned()
+                    .ok_or(RuntimeError::UndefinedFunction(name.clone()))?;
+
                 if params.len() != args.len() {
-                    panic!(
-                        "Func {} expected: {} but got args: {}",
-                        name,
-                        params.len(),
-                        args.len()
-                    );
+                    return Err(RuntimeError::ArgumentMismatch {
+                        expected: params.len(),
+                        got: args.len(),
+                    });
                 }
-                //создаем локальные переменные
+
                 let mut local = Interpretation {
                     vars: HashMap::new(),
                     funcs: self.funcs.clone(),
                 };
-                // заполняем локальные переменные данными
-                for (i, arg) in params.into_iter().zip(args.into_iter()) {
+
+                for (param, arg_expr) in params.into_iter().zip(args.into_iter()) {
                     local.vars.insert(
-                        i,
+                        param,
                         Value {
-                            value: self.run_expr(arg),
+                            value: self.run_expr(arg_expr)?,
                             mutable: false,
                         },
                     );
                 }
-                // выполняем тело функции
+
                 for stmt in body {
-                    match local.run_stmt(stmt) {
-                        ExecReturn::Return(v) => {
-                            return v;
-                        }
-                        ExecReturn::None => continue,
+                    match local.run_stmt(stmt)? {
+                        ExecReturn::Return(v) => return Ok(v),
+                        ExecReturn::None => {}
                     }
                 }
-                0
+
+                Ok(0)
             }
         }
     }
