@@ -1,5 +1,16 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Expr {
+use crate::type_error::Span;
+
+#[derive(Debug, Clone)]
+pub struct Node<T> {
+    pub kind: T,
+    pub span: Span,
+}
+
+pub type Expr = Node<ExprKind>;
+pub type Stmt = Node<StmtKind>;
+
+#[derive(Debug, Clone)]
+pub enum ExprKind {
     Num(i64),
     Ident(String),
     Plus(Box<Expr>, Box<Expr>),
@@ -19,8 +30,8 @@ pub enum Expr {
     Call { call: Box<Expr>, args: Vec<Expr> },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Stmt {
+#[derive(Debug, Clone)]
+pub enum StmtKind {
     Expr(Expr),
     Print(Expr),
     VerDecl {

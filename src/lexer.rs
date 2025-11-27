@@ -1,7 +1,8 @@
+use crate::type_error::{Position, Span, TokenPosition};
 use logos::Logos;
 
 #[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(skip r"[\t\n\f]+")]
+#[logos(skip r"[ \t\f]+")]
 #[logos(skip r"//[^\n]*")]
 pub enum Token {
     #[token("var")]
@@ -62,8 +63,42 @@ pub enum Token {
     Return,
     #[token(",")]
     Comma,
+    #[token("\n")]
+    NewLine,
 }
 
-pub fn lex(input: &str) -> Vec<Token> {
-    Token::lexer(input).filter_map(|x| x.ok()).collect()
+pub fn lex(input: &str) -> Vec<TokenPosition> {
+    let mut tokens = Vec::new();
+    let mut line = 1;
+    let mut column = 1;
+
+    let mut lexer = Token::lexer(input);
+
+    while let Some(token) = lexer.next() {
+        let slice = lexer.slice();
+        let len = slice.len();
+
+        match token {
+            Ok(t) => {
+                if matches!(t, Token::NewLine) {
+                    line += 1;
+                    column = 1;
+                } else {
+                    let start = Position { line, column };
+                    let end = Position {
+                        line,
+                        column: column + len,
+                    };
+                    tokens.push(TokenPosition {
+                        token: t,
+                        position: Span { start, end },
+                    })
+                }
+                column += len;
+            }
+
+            Err(_) => column += 1,
+        }
+    }
+    tokens
 }

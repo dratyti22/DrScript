@@ -8,3 +8,13 @@ for (i = 1; i <= 3; i++) {
         print(i * j);
     }
 }
+
+fun add(n) {
+    if n <= 1 {
+        return 1;
+    } else {
+        return n * add(n-1);
+    }
+}
+print(add(10));
+print(afd);

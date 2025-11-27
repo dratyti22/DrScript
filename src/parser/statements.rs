@@ -1,212 +1,290 @@
-use crate::ast::Stmt;
+use crate::ast::{Stmt, StmtKind};
 use crate::lexer::Token;
 use crate::parser::ParserToken;
+use crate::type_error::{ParseError, ParseErrorKind, Span, TError, TokenPosition, TokensError};
 
 impl ParserToken {
+    /// создание stmt
+    fn make_stmt(&self, kind: StmtKind, span: Span) -> Stmt {
+        Stmt { kind, span }
+    }
+
+    /// вспомогательная функция для получения идентификатора
+    fn expect_ident(&mut self) -> TError<(String, Span)> {
+        match self.advance() {
+            Some(TokenPosition {
+                token: Token::Ident(name),
+                position,
+            }) => Ok((name, position)),
+            Some(TokenPosition { token, position }) => Err(ParseError::new(
+                ParseErrorKind::Tokens(TokensError::ExpectedToken(
+                    Token::Ident(String::new()),
+                    token,
+                )),
+                position,
+                None,
+                None,
+            )),
+            None => Err(ParseError::new(
+                ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
+                Span::default(),
+                None,
+                None,
+            )),
+        }
+    }
     /// проверка того что приходит на вход
-    pub(super) fn parse_stmt(&mut self) -> Stmt {
+    pub(super) fn parse_stmt(&mut self) -> TError<Stmt> {
         match self.peek() {
-            Some(Token::If) => self.parse_if(),
-            Some(Token::While) => self.parse_while(),
-            Some(Token::For) => self.parse_for(),
-            Some(Token::Fun) => self.parse_fun(),
-            Some(Token::Return) => self.parse_return(),
-            Some(Token::Var) | Some(Token::Ver) => self.parse_var_decl(),
-            Some(Token::Ident(name)) if name == "print" => self.parse_print(),
-            Some(Token::Ident(_)) => {
-                if self.peek_next() == Some(&Token::Assign) {
+            Some(TokenPosition {
+                token: Token::If,
+                position: _,
+            }) => self.parse_if(),
+            Some(TokenPosition {
+                token: Token::While,
+                position: _,
+            }) => self.parse_while(),
+            Some(TokenPosition {
+                token: Token::For,
+                position: _,
+            }) => self.parse_for(),
+            Some(TokenPosition {
+                token: Token::Fun,
+                position: _,
+            }) => self.parse_fun(),
+            Some(TokenPosition {
+                token: Token::Return,
+                position: _,
+            }) => self.parse_return(),
+            Some(TokenPosition {
+                token: Token::Var,
+                position: _,
+            })
+            | Some(TokenPosition {
+                token: Token::Ver,
+                position: _,
+            }) => self.parse_var_decl(),
+            Some(TokenPosition {
+                token: Token::Ident(name),
+                position: _,
+            }) if name == "print" => self.parse_print(),
+            Some(TokenPosition {
+                token: Token::Ident(_),
+                position: _,
+            }) => {
+                if matches!(self.peek_next().map(|t| &t.token), Some(&Token::Assign)) {
                     self.parse_assign()
                 } else {
-                    let expr = self.parse_expr();
-                    self.expect(&Token::Semicolon);
-                    Stmt::Expr(expr)
+                    let expr = self.parse_expr()?;
+                    let span = expr.span.clone();
+                    self.expect(&Token::Semicolon)?;
+                    Ok(self.make_stmt(StmtKind::Expr(expr), span))
                 }
             }
 
-            other => panic!("Ожидалось имя переменной {:?}", other),
+            Some(TokenPosition { token, position }) => Err(ParseError::new(
+                ParseErrorKind::Tokens(TokensError::UnexpectedToken(token.clone())),
+                position.clone(),
+                None,
+                None,
+            )),
+            None => Err(ParseError::new(
+                ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
+                Span::default(),
+                None,
+                None,
+            )),
         }
     }
     /// парсинг переменной
-    pub(super) fn parse_var_decl(&mut self) -> Stmt {
-        let token = self.advance(); // тут получаем тип переменной
-        let x = token.unwrap();
-        match x {
-            Token::Var => {
-                let name = match self.advance() {
-                    Some(Token::Ident(name)) => name, // тут получаем имя переменной
-                    _ => panic!("Ожидал имя переменной"),
-                };
-                self.expect(&Token::Assign); // тут проверяем что после имени идет =
-                let value = self.parse_expr(); // тут парсим выражение
-                self.expect(&Token::Semicolon); // тут проверяем что после выражения идет ;
-                Stmt::Assign { name, value }
+    pub(super) fn parse_var_decl(&mut self) -> TError<Stmt> {
+        match self.advance() {
+            Some(TokenPosition {
+                token: Token::Var,
+                position,
+            }) => {
+                let (name, _) = self.expect_ident()?;
+                self.expect(&Token::Assign)?; // тут проверяем что после имени идет =
+                let value = self.parse_expr()?; // тут парсим выражение
+                let semi = self.expect(&Token::Semicolon)?; // тут проверяем что после выражения идет ;
+                let span = self.merge_span(&position, &semi.position);
+                Ok(self.make_stmt(StmtKind::Assign { name, value }, span))
             }
-            Token::Ver => {
-                let name = match self.advance() {
-                    Some(Token::Ident(name)) => name, // тут получаем имя переменной
-                    _ => panic!("Ожидал имя переменной"),
-                };
-                self.expect(&Token::Assign); // тут проверяем что после имени идет =
-                let value = self.parse_expr(); // тут парсим выражение
-                self.expect(&Token::Semicolon); // тут проверяем что после выражения идет ;
-                Stmt::VerDecl {
-                    name,
-                    value,
-                    mutable: true,
-                }
+            Some(TokenPosition {
+                token: Token::Ver,
+                position,
+            }) => {
+                let (name, _) = self.expect_ident()?;
+                self.expect(&Token::Assign)?; // тут проверяем что после имени идет =
+                let value = self.parse_expr()?; // тут парсим выражение
+                let semi = self.expect(&Token::Semicolon)?; // тут проверяем что после выражения идет ;
+                let span = self.merge_span(&position, &semi.position);
+                Ok(self.make_stmt(
+                    StmtKind::VerDecl {
+                        name,
+                        value,
+                        mutable: true,
+                    },
+                    span,
+                ))
             }
-            _ => panic!("Ожидал переменную"),
+            Some(TokenPosition { token, position }) => Err(ParseError::new(
+                ParseErrorKind::Tokens(TokensError::UnexpectedToken(token)),
+                position,
+                None,
+                None,
+            )),
+            _ => Err(ParseError::new(
+                ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
+                Span::default(),
+                None,
+                None,
+            )),
         }
     }
     /// выводит значение
-    pub(super) fn parse_print(&mut self) -> Stmt {
+    pub(super) fn parse_print(&mut self) -> TError<Stmt> {
         self.advance(); // пропускаем print
-        self.expect(&Token::LParen);
-        let expr = self.parse_expr();
-        self.expect(&Token::RParen);
-        self.expect(&Token::Semicolon);
-        Stmt::Print(expr)
+        self.expect(&Token::LParen)?;
+        let expr = self.parse_expr()?;
+        self.expect(&Token::RParen)?;
+        self.expect(&Token::Semicolon)?;
+        let span = expr.span.clone();
+        Ok(self.make_stmt(StmtKind::Print(expr), span))
     }
     /// по логике изменение значения переменной
-    fn parse_assign(&mut self) -> Stmt {
-        let name = match self.advance() {
-            Some(Token::Ident(name)) => name,
-            _ => panic!("Ожидал имя переменной"),
-        };
-        self.expect(&Token::Assign);
-        let value = self.parse_expr();
-        self.expect(&Token::Semicolon);
-        Stmt::Assign { name, value }
+    fn parse_assign(&mut self) -> TError<Stmt> {
+        let (name, start) = self.expect_ident()?;
+        self.expect(&Token::Assign)?;
+        let value = self.parse_expr()?;
+        let end = self.expect(&Token::Semicolon)?;
+        let span = self.merge_span(&start, &end.position);
+        Ok(self.make_stmt(StmtKind::Assign { name, value }, span))
     }
     /// парсинг функции
-    fn parse_fun(&mut self) -> Stmt {
-        self.expect(&Token::Fun);
-        let name = match self.advance() {
-            Some(Token::Ident(name)) => name,
-            other => panic!("должно быть имя функции но полученно: {:?}", other),
-        };
-        self.expect(&Token::LParen);
+    fn parse_fun(&mut self) -> TError<Stmt> {
+        let start = self.expect(&Token::Fun)?;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&Token::LParen)?;
         let mut params = Vec::new();
 
-        if self.peek() != Some(&Token::RParen) {
+        if !matches!(self.peek().map(|t| &t.token), Some(&Token::RParen)) {
             loop {
-                let param = match self.advance() {
-                    Some(Token::Ident(n)) => n,
-                    other => panic!("Полученно: {:?} вместо имени аргумента", other),
-                };
+                let (param, _) = self.expect_ident()?;
                 params.push(param);
-                if self.peek() == Some(&Token::Comma) {
+                if matches!(self.peek().map(|t| &t.token), Some(&Token::Comma)) {
                     self.advance();
                 }
-                if self.peek() == Some(&Token::RParen) {
+                if matches!(self.peek().map(|t| &t.token), Some(&Token::RParen)) {
                     break;
                 }
             }
         }
 
-        self.expect(&Token::RParen);
-        self.expect(&Token::LBrace);
-        let body = self.parse_block();
-        self.expect(&Token::RBrace);
-        Stmt::Func { name, params, body }
+        self.expect(&Token::RParen)?;
+        self.expect(&Token::LBrace)?;
+        let body = self.parse_block()?;
+        let end = self.expect(&Token::RBrace)?;
+        let span = self.merge_span(&start.position, &end.position);
+        Ok(self.make_stmt(StmtKind::Func { name, params, body }, span))
     }
-    fn parse_return(&mut self) -> Stmt {
-        self.expect(&Token::Return);
-        let expr = self.parse_expr();
-        self.expect(&Token::Semicolon);
-        Stmt::Return(expr)
+    fn parse_return(&mut self) -> TError<Stmt> {
+        let start = self.expect(&Token::Return)?;
+        let expr = self.parse_expr()?;
+        let end = self.expect(&Token::Semicolon)?;
+        let span = self.merge_span(&start.position, &end.position);
+        Ok(self.make_stmt(StmtKind::Return(expr), span))
     }
 
     /// парсинг if
-    fn parse_if(&mut self) -> Stmt {
-        self.expect(&Token::If);
+    fn parse_if(&mut self) -> TError<Stmt> {
+        let start = self.expect(&Token::If)?;
 
-        let cond = self.parse_expr();
-        self.expect(&Token::LBrace);
-        let then_branch = self.parse_block();
-        self.expect(&Token::RBrace);
+        let cond = self.parse_expr()?;
+        self.expect(&Token::LBrace)?;
+        let then_branch = self.parse_block()?;
+        self.expect(&Token::RBrace)?;
 
-        let else_branch = if self.peek() == Some(&Token::Else) {
+        let else_branch = if matches!(self.peek().map(|t| &t.token), Some(&Token::Else)) {
             self.advance(); // пропускаем else
-            self.expect(&Token::LBrace);
-            let block = Some(self.parse_block());
-            self.expect(&Token::RBrace);
-            block
+            self.expect(&Token::LBrace)?;
+            let block = self.parse_block()?;
+            self.expect(&Token::RBrace)?;
+            Some(block)
         } else {
             None
         };
+        let end = if let Some(else_block) = &else_branch {
+            else_block.last().map(|t| &t.span).unwrap_or(&cond.span)
+        } else {
+            then_branch.last().map(|t| &t.span).unwrap_or(&cond.span)
+        };
 
-        Stmt::If {
-            cond,
-            then_branch,
-            else_branch,
-        }
+        let span = self.merge_span(&start.position, end);
+        Ok(self.make_stmt(
+            StmtKind::If {
+                cond,
+                then_branch,
+                else_branch,
+            },
+            span,
+        ))
     }
 
-    fn parse_while(&mut self) -> Stmt {
-        self.expect(&Token::While);
-        let cond = self.parse_expr();
-        self.expect(&Token::LBrace);
-        let body = self.parse_block();
-        self.expect(&Token::RBrace);
-        Stmt::While { cond, body }
+    fn parse_while(&mut self) -> TError<Stmt> {
+        let start = self.expect(&Token::While)?;
+        let cond = self.parse_expr()?;
+        self.expect(&Token::LBrace)?;
+        let body = self.parse_block()?;
+        let rbrace = self.expect(&Token::RBrace)?;
+        let span = self.merge_span(&start.position, &rbrace.position);
+        Ok(self.make_stmt(StmtKind::While { cond, body }, span))
     }
-    fn parse_for(&mut self) -> Stmt {
-        self.expect(&Token::For);
-        self.expect(&Token::LParen);
+    fn parse_for(&mut self) -> TError<Stmt> {
+        let start = self.expect(&Token::For)?;
+        self.expect(&Token::LParen)?;
 
-        let init = self.parse_name_in_for();
+        let init = self.parse_stmt()?;
 
-        let cond = self.parse_expr();
-        self.expect(&Token::Semicolon);
-        let incr = if self.peek() == Some(&Token::RParen) {
+        let cond = self.parse_expr()?;
+        self.expect(&Token::Semicolon)?;
+        let incr = if matches!(self.peek().map(|t| &t.token), Some(&Token::RParen)) {
             None
         } else {
-            Some(self.parse_expr())
+            Some(self.parse_expr()?)
         };
-        self.expect(&Token::RParen);
-        self.expect(&Token::LBrace);
-        let body = self.parse_block();
-        self.expect(&Token::RBrace);
+        self.expect(&Token::RParen)?;
+        self.expect(&Token::LBrace)?;
+        let body = self.parse_block()?;
+        let rparen = self.expect(&Token::RParen)?;
+        let span = self.merge_span(&start.position, &rparen.position);
 
-        Stmt::For {
-            init: Box::new(init),
-            cond,
-            incr,
-            body,
-        }
+        Ok(self.make_stmt(
+            StmtKind::For {
+                init: Box::new(init),
+                cond,
+                incr,
+                body,
+            },
+            span,
+        ))
     }
 
-    fn parse_block(&mut self) -> Vec<Stmt> {
+    fn parse_block(&mut self) -> TError<Vec<Stmt>> {
         let mut stmts = Vec::new();
 
-        while let Some(token) = self.peek() {
-            if token == &Token::RBrace {
+        while let Some(TokenPosition { token, position: _ }) = self.peek() {
+            if matches!(token, &Token::RBrace) {
                 break;
             }
 
             match token {
                 Token::Ident(name) if name == "print" => {
-                    stmts.push(self.parse_print());
+                    stmts.push(self.parse_print()?);
                 }
-                _ => stmts.push(self.parse_stmt()),
+                _ => stmts.push(self.parse_stmt()?),
             }
         }
-        stmts
-    }
-    /// парсинг переменной для for что бы была мутабельной
-    fn parse_name_in_for(&mut self) -> Stmt {
-        let name = match self.advance() {
-            Some(Token::Ident(name)) => name, // тут получаем имя переменной
-            _ => panic!("Ожидал имя переменной"),
-        };
-        self.expect(&Token::Assign); // тут проверяем что после имени идет =
-        let value = self.parse_expr(); // тут парсим выражение
-        self.expect(&Token::Semicolon); // тут проверяем что после выражения идет ;
-        Stmt::VerDecl {
-            name,
-            value,
-            mutable: true,
-        }
+        Ok(stmts)
     }
 }

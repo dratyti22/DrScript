@@ -1,38 +1,80 @@
 use crate::lexer::Token;
 use crate::parser::ParserToken;
+use crate::type_error::{ParseError, ParseErrorKind, Span, TError, TokenPosition, TokensError};
 
 impl ParserToken {
     /// получает текущий токен
-    pub(super) fn peek(&self) -> Option<&Token> {
+    pub(super) fn peek(&mut self) -> Option<&TokenPosition> {
         self.tokens.get(self.pos)
     }
     /// получает следующий токен
-    pub(super) fn peek_next(&self) -> Option<&Token> {
+    pub(super) fn peek_next(&self) -> Option<&TokenPosition> {
         self.tokens.get(self.pos + 1)
     }
 
     ///сдвигает позицию на 1 и возвращает предыдущий токен
-    pub(super) fn advance(&mut self) -> Option<Token> {
+    pub(super) fn advance(&mut self) -> Option<TokenPosition> {
         if self.pos < self.tokens.len() {
             self.pos += 1;
         }
         self.tokens.get(self.pos - 1).cloned()
     }
 
-    /// проверка и потребление токена если совподают
-    pub(super) fn match_token(&mut self, token: &Token) -> bool {
-        if let Some(current) = self.peek()
-            && std::mem::discriminant(current) == std::mem::discriminant(token)
+    /// проверка и потребление токена если совпадают
+    pub(super) fn match_token(&mut self, token_t: &Token) -> bool {
+        if let Some(TokenPosition {
+            token: token_p,
+            position: _,
+        }) = self.peek()
+            && std::mem::discriminant(token_p) == std::mem::discriminant(token_t)
         {
-            self.advance();
             return true;
         }
         false
     }
-    /// если токен не совпадает, то паника
-    pub(super) fn expect(&mut self, token: &Token) {
-        if !self.match_token(token) {
-            panic!("Expected {:?} but got {:?}", token, self.peek())
+    /// если токен не совпадает, то ошибка
+    pub(super) fn expect(&mut self, expected_token: &Token) -> TError<TokenPosition> {
+        if !self.match_token(expected_token) {
+            let current = self.peek();
+            match current {
+                Some(TokenPosition { token, position }) => Err(ParseError::new(
+                    ParseErrorKind::Tokens(TokensError::ExpectedToken(
+                        expected_token.clone(),
+                        token.clone(),
+                    )),
+                    position.clone(),
+                    None,
+                    None,
+                )),
+                None => Err(ParseError::new(
+                    ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
+                    Span::default(),
+                    None,
+                    None,
+                )),
+            }
+        } else {
+            self.advance().ok_or_else(|| {
+                ParseError::new(
+                    ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
+                    Span::default(),
+                    None,
+                    None,
+                )
+            })
+        }
+    }
+
+    /// вспомогательная функция для обратной совместимости
+    pub(super) fn expect_or_panic(&mut self, expected_token: &Token) {
+        if let Err(_) = self.expect(expected_token) {
+            panic!("Expected {:?} but got {:?}", expected_token, self.peek())
+        }
+    }
+    pub(super)    fn merge_span(&self, a: &Span, b: &Span) -> Span {
+        Span {
+            start: a.start.clone(),
+            end: b.end.clone(),
         }
     }
 }
