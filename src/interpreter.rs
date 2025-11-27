@@ -1,7 +1,6 @@
-use crate::ast::{Expr, Stmt};
-use std::collections::HashMap;
-use std::fmt;
+use crate::ast::{Expr, ExprKind, Stmt, StmtKind};
 use crate::type_error::RuntimeError;
+use std::collections::HashMap;
 
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
 
@@ -45,8 +44,9 @@ impl Interpretation {
     }
 
     fn run_stmt(&mut self, stmt: Stmt) -> RuntimeResult<ExecReturn> {
-        match stmt {
-            Stmt::VerDecl {
+        let span = stmt.span.clone();
+        match stmt.kind {
+            StmtKind::VerDecl {
                 name,
                 value,
                 mutable,
@@ -56,13 +56,13 @@ impl Interpretation {
                 Ok(ExecReturn::None)
             }
 
-            Stmt::Assign { name, value } => {
+            StmtKind::Assign { name, value } => {
                 let new_val = self.run_expr(value)?;
 
                 match self.vars.get_mut(&name) {
                     Some(v) => {
                         if !v.mutable {
-                            return Err(RuntimeError::ImmutableAssignment(name));
+                            return Err(RuntimeError::ImmutableAssignment { name, span });
                         }
                         v.value = new_val;
                     }
@@ -79,7 +79,7 @@ impl Interpretation {
                 Ok(ExecReturn::None)
             }
 
-            Stmt::If {
+            StmtKind::If {
                 cond,
                 then_branch,
                 else_branch,
@@ -102,7 +102,7 @@ impl Interpretation {
                 Ok(ExecReturn::None)
             }
 
-            Stmt::While { cond, body } => {
+            StmtKind::While { cond, body } => {
                 while self.run_expr(cond.clone())? != 0 {
                     for stmt in body.clone() {
                         match self.run_stmt(stmt)? {
@@ -114,7 +114,7 @@ impl Interpretation {
                 Ok(ExecReturn::None)
             }
 
-            Stmt::For {
+            StmtKind::For {
                 init,
                 cond,
                 incr,
@@ -137,23 +137,23 @@ impl Interpretation {
                 Ok(ExecReturn::None)
             }
 
-            Stmt::Print(expr) => {
+            StmtKind::Print(expr) => {
                 let value = self.run_expr(expr)?;
                 println!("{}", value);
                 Ok(ExecReturn::None)
             }
 
-            Stmt::Expr(expr) => {
+            StmtKind::Expr(expr) => {
                 self.run_expr(expr)?;
                 Ok(ExecReturn::None)
             }
 
-            Stmt::Func { name, params, body } => {
+            StmtKind::Func { name, params, body } => {
                 self.funcs.insert(name, (params, body));
                 Ok(ExecReturn::None)
             }
 
-            Stmt::Return(expr) => {
+            StmtKind::Return(expr) => {
                 let value = self.run_expr(expr)?;
                 Ok(ExecReturn::Return(value))
             }
@@ -161,20 +161,21 @@ impl Interpretation {
     }
 
     fn run_expr(&mut self, expr: Expr) -> RuntimeResult<i64> {
-        match expr {
-            Expr::Num(n) => Ok(n),
+        let span = expr.span.clone();
+        match expr.kind {
+            ExprKind::Num(n) => Ok(n),
 
-            Expr::Ident(name) => self
+            ExprKind::Ident(name) => self
                 .vars
                 .get(&name)
                 .map(|v| v.value)
-                .ok_or(RuntimeError::UndefinedVariable(name)),
+                .ok_or(RuntimeError::UndefinedVariable { name, span }),
 
-            Expr::Plus(l, r) => Ok(self.run_expr(*l)? + self.run_expr(*r)?),
-            Expr::Minus(l, r) => Ok(self.run_expr(*l)? - self.run_expr(*r)?),
-            Expr::Star(l, r) => Ok(self.run_expr(*l)? * self.run_expr(*r)?),
+            ExprKind::Plus(l, r) => Ok(self.run_expr(*l)? + self.run_expr(*r)?),
+            ExprKind::Minus(l, r) => Ok(self.run_expr(*l)? - self.run_expr(*r)?),
+            ExprKind::Star(l, r) => Ok(self.run_expr(*l)? * self.run_expr(*r)?),
 
-            Expr::Slash(l, r) => {
+            ExprKind::Slash(l, r) => {
                 let rhs = self.run_expr(*r)?;
                 if rhs == 0 {
                     return Err(RuntimeError::DivisionByZero);
@@ -182,62 +183,67 @@ impl Interpretation {
                 Ok(self.run_expr(*l)? / rhs)
             }
 
-            Expr::Less(l, r) => Ok((self.run_expr(*l)? < self.run_expr(*r)?) as i64),
-            Expr::LessEqual(l, r) => Ok((self.run_expr(*l)? <= self.run_expr(*r)?) as i64),
-            Expr::Greater(l, r) => Ok((self.run_expr(*l)? > self.run_expr(*r)?) as i64),
-            Expr::GreaterEqual(l, r) => Ok((self.run_expr(*l)? >= self.run_expr(*r)?) as i64),
-            Expr::EqualEqual(l, r) => Ok((self.run_expr(*l)? == self.run_expr(*r)?) as i64),
-            Expr::NotEqual(l, r) => Ok((self.run_expr(*l)? != self.run_expr(*r)?) as i64),
+            ExprKind::Less(l, r) => Ok((self.run_expr(*l)? < self.run_expr(*r)?) as i64),
+            ExprKind::LessEqual(l, r) => Ok((self.run_expr(*l)? <= self.run_expr(*r)?) as i64),
+            ExprKind::Greater(l, r) => Ok((self.run_expr(*l)? > self.run_expr(*r)?) as i64),
+            ExprKind::GreaterEqual(l, r) => Ok((self.run_expr(*l)? >= self.run_expr(*r)?) as i64),
+            ExprKind::EqualEqual(l, r) => Ok((self.run_expr(*l)? == self.run_expr(*r)?) as i64),
+            ExprKind::NotEqual(l, r) => Ok((self.run_expr(*l)? != self.run_expr(*r)?) as i64),
 
-            Expr::PreInc(name) => {
+            ExprKind::PreInc(name) => {
                 let v = self
                     .vars
                     .get_mut(&name)
-                    .ok_or(RuntimeError::UndefinedVariable(name.clone()))?;
+                    .ok_or(RuntimeError::UndefinedVariable { name, span })?;
                 v.value += 1;
                 Ok(v.value)
             }
 
-            Expr::PreDec(name) => {
+            ExprKind::PreDec(name) => {
                 let v = self
                     .vars
                     .get_mut(&name)
-                    .ok_or(RuntimeError::UndefinedVariable(name.clone()))?;
+                    .ok_or(RuntimeError::UndefinedVariable { name, span })?;
                 v.value -= 1;
                 Ok(v.value)
             }
 
-            Expr::PostInc(name) => {
+            ExprKind::PostInc(name) => {
                 let v = self
                     .vars
                     .get_mut(&name)
-                    .ok_or(RuntimeError::UndefinedVariable(name.clone()))?;
+                    .ok_or(RuntimeError::UndefinedVariable { name, span })?;
                 let old = v.value;
                 v.value += 1;
                 Ok(old)
             }
 
-            Expr::PostDec(name) => {
+            ExprKind::PostDec(name) => {
                 let v = self
                     .vars
                     .get_mut(&name)
-                    .ok_or(RuntimeError::UndefinedVariable(name.clone()))?;
+                    .ok_or(RuntimeError::UndefinedVariable { name, span })?;
                 let old = v.value;
                 v.value -= 1;
                 Ok(old)
             }
 
-            Expr::Call { call, args } => {
-                let name = match *call {
-                    Expr::Ident(n) => n,
-                    _ => return Err(RuntimeError::UndefinedFunction("<?>".into())),
+            ExprKind::Call { call, args } => {
+                let name = match call.kind {
+                    ExprKind::Ident(n) => n,
+                    _ => {
+                        return Err(RuntimeError::UndefinedFunction {
+                            name: "<?>".to_string(),
+                            span,
+                        });
+                    }
                 };
 
                 let (params, body) = self
                     .funcs
                     .get(&name)
                     .cloned()
-                    .ok_or(RuntimeError::UndefinedFunction(name.clone()))?;
+                    .ok_or(RuntimeError::UndefinedFunction { name, span })?;
 
                 if params.len() != args.len() {
                     return Err(RuntimeError::ArgumentMismatch {

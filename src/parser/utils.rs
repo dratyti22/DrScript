@@ -1,10 +1,10 @@
 use crate::lexer::Token;
 use crate::parser::ParserToken;
-use crate::type_error::{TokenPosition, TError, ParseError, ParseErrorKind, TokensError, Span};
+use crate::type_error::{ParseError, ParseErrorKind, Span, TError, TokenPosition, TokensError};
 
 impl ParserToken {
     /// получает текущий токен
-    pub(super) fn peek(&self) -> Option<&TokenPosition> {
+    pub(super) fn peek(&mut self) -> Option<&TokenPosition> {
         self.tokens.get(self.pos)
     }
     /// получает следующий токен
@@ -28,18 +28,20 @@ impl ParserToken {
         }) = self.peek()
             && std::mem::discriminant(token_p) == std::mem::discriminant(token_t)
         {
-            self.advance();
             return true;
         }
         false
     }
     /// если токен не совпадает, то ошибка
-    pub(super) fn expect(&mut self, expected_token: &Token) -> TError<()> {
+    pub(super) fn expect(&mut self, expected_token: &Token) -> TError<TokenPosition> {
         if !self.match_token(expected_token) {
             let current = self.peek();
             match current {
                 Some(TokenPosition { token, position }) => Err(ParseError::new(
-                    ParseErrorKind::Tokens(TokensError::ExpectedToken(expected_token.clone(), token.clone())),
+                    ParseErrorKind::Tokens(TokensError::ExpectedToken(
+                        expected_token.clone(),
+                        token.clone(),
+                    )),
                     position.clone(),
                     None,
                     None,
@@ -52,14 +54,27 @@ impl ParserToken {
                 )),
             }
         } else {
-            Ok(())
+            self.advance().ok_or_else(|| {
+                ParseError::new(
+                    ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
+                    Span::default(),
+                    None,
+                    None,
+                )
+            })
         }
     }
-    
+
     /// вспомогательная функция для обратной совместимости
     pub(super) fn expect_or_panic(&mut self, expected_token: &Token) {
         if let Err(_) = self.expect(expected_token) {
             panic!("Expected {:?} but got {:?}", expected_token, self.peek())
+        }
+    }
+    pub(super)    fn merge_span(&self, a: &Span, b: &Span) -> Span {
+        Span {
+            start: a.start.clone(),
+            end: b.end.clone(),
         }
     }
 }

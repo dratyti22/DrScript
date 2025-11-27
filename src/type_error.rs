@@ -134,18 +134,30 @@ pub enum BlockError {
 // ==================== RUNTIME ERRORS ====================
 #[derive(Debug)]
 pub enum RuntimeError {
-    UndefinedVariable(String),
-    UndefinedFunction(String),
-    ImmutableAssignment(String),
+    UndefinedVariable{name: String, span: Span},
+    UndefinedFunction{name: String, span: Span},
+    ImmutableAssignment{name: String, span: Span},
     ArgumentMismatch { expected: usize, got: usize },
     DivisionByZero,
 }
+impl RuntimeError {
+    pub fn span(&self) -> Span {
+        match self {
+            RuntimeError::UndefinedVariable { span, .. } => span.clone(),
+            RuntimeError::UndefinedFunction { span, .. } => span.clone(),
+            RuntimeError::ImmutableAssignment { span, .. } => span.clone(),
+            RuntimeError::ArgumentMismatch { .. } => Default::default(),
+            RuntimeError::DivisionByZero => Default::default(),
+        }
+    }
+}
+
 impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RuntimeError::UndefinedVariable(v) => write!(f, "Undefined variable: {}", v),
-            RuntimeError::UndefinedFunction(fnc) => write!(f, "Undefined function: {}", fnc),
-            RuntimeError::ImmutableAssignment(name) => {
+            RuntimeError::UndefinedVariable { name, .. } => write!(f, "Undefined variable: {}", name),
+            RuntimeError::UndefinedFunction { name, .. } => write!(f, "Undefined function: {}", name),
+            RuntimeError::ImmutableAssignment { name, .. } => {
                 write!(f, "Cannot assign to immutable variable: {}", name)
             }
             RuntimeError::ArgumentMismatch { expected, got } => {

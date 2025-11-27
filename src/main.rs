@@ -40,9 +40,10 @@ fn run() -> Result<(), type_error::ParseError> {
     match i.run(ast) {
         Ok(_) => Ok(()),
         Err(e) => {
+            let span = e.span();
             Err(ParseError::new(
                 ParseErrorKind::Runtime(e),
-                Default::default(), // временно используем пустой span
+                span,
                 Some(cli.file.clone()),
                 Some(code.clone()),
             ))

@@ -6,4 +6,4 @@ fun add(n) {
     }
 }
 print(add(10));
-print("asdfd");
+print(afd);
