@@ -244,7 +244,7 @@ impl ParserToken {
         let start = self.expect(&Token::For)?;
         self.expect(&Token::LParen)?;
 
-        let init = self.parse_stmt()?;
+        let init = self.parse_name_in_for()?;
 
         let cond = self.parse_expr()?;
         self.expect(&Token::Semicolon)?;
@@ -256,8 +256,8 @@ impl ParserToken {
         self.expect(&Token::RParen)?;
         self.expect(&Token::LBrace)?;
         let body = self.parse_block()?;
-        let rparen = self.expect(&Token::RParen)?;
-        let span = self.merge_span(&start.position, &rparen.position);
+        let rbrace = self.expect(&Token::RBrace)?;
+        let span = self.merge_span(&start.position, &rbrace.position);
 
         Ok(self.make_stmt(
             StmtKind::For {
@@ -286,5 +286,20 @@ impl ParserToken {
             }
         }
         Ok(stmts)
+    }
+    fn parse_name_in_for(&mut self) -> TError<Stmt> {
+        let (name, start) = self.expect_ident()?;
+        self.expect(&Token::Assign)?; // тут проверяем что после имени идет =
+        let value = self.parse_expr()?; // тут парсим выражение
+        let end = self.expect(&Token::Semicolon)?; // тут проверяем что после выражения идет ;
+        let span = self.merge_span(&start, &end.position);
+        Ok(self.make_stmt(
+            StmtKind::VerDecl {
+                name,
+                value,
+                mutable: true,
+            },
+            span,
+        ))
     }
 }

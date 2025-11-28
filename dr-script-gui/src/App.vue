@@ -23,6 +23,61 @@ const showOutput = ref(false)
 const showExamples = ref(false)
 const selectedExample = ref(null)
 
+function formatError(errorStr) {
+  if (errorStr.includes('Parse error:')) {
+    // Парсим позицию ошибки
+    const posMatch = errorStr.match(/line: (\d+), column: (\d+)/);
+    
+    // Парсим тип ошибки
+    let errorMessage = 'Синтаксическая ошибка';
+    
+    if (errorStr.includes('ExpectedToken(Semicolon')) {
+      errorMessage = 'Пропущена точка с запятой (;)';
+    } else if (errorStr.includes('ExpectedToken(RBrace')) {
+      errorMessage = 'Пропущена закрывающая скобка }';
+    } else if (errorStr.includes('ExpectedToken(RParen')) {
+      errorMessage = 'Пропущена закрывающая скобка )';
+    } else if (errorStr.includes('UnexpectedToken')) {
+      errorMessage = 'Неожиданный токен';
+    } else if (errorStr.includes('UnexpectedEOF')) {
+      errorMessage = 'Неожиданный конец файла';
+    }
+    
+    if (posMatch) {
+      const [, line, column] = posMatch;
+      return `❌ Ошибка парсинга на строке ${line}, позиция ${column}:\n${errorMessage}`;
+    }
+    
+    return `❌ Ошибка парсинга:\n${errorMessage}`;
+  }
+  
+  if (errorStr.includes('Runtime error:')) {
+    return errorStr.replace('Runtime error:', '❌ Ошибка выполнения:');
+  }
+  
+  return errorStr;
+}
+
+function getErrorMessage(errorType, details) {
+  const messages = {
+    'ExpectedToken': 'Ожидался другой токен',
+    'UnexpectedToken': 'Неожиданный токен',
+    'UnexpectedEOF': 'Неожиданный конец файла',
+    'UndefinedVariable': 'Неопределенная переменная',
+    'UndefinedFunction': 'Неопределенная функция',
+    'DivisionByZero': 'Деление на ноль'
+  };
+  
+  if (details.includes('Semicolon')) {
+    return 'Пропущена точка с запятой (;)';
+  }
+  if (details.includes('RBrace')) {
+    return 'Пропущена закрывающая скобка }';
+  }
+  
+  return messages[errorType] || `Ошибка: ${errorType}`;
+}
+
 async function run() {
   isRunning.value = true
   output.value = ''
@@ -30,9 +85,13 @@ async function run() {
 
   try {
     const result = await invoke('run_code', { code: code.value })
-    output.value = result || 'Программа выполнена успешно'
+    if (result.includes('error:')) {
+      output.value = formatError(result)
+    } else {
+      output.value = result || '✅ Программа выполнена успешно'
+    }
   } catch (e) {
-    output.value = `❌ Ошибка выполнения:\n${e}`
+    output.value = formatError(String(e))
   } finally {
     isRunning.value = false
   }
@@ -207,14 +266,16 @@ function newFile() {
         </div>
 
         <div class="flex-1 overflow-auto custom-scrollbar">
-          <pre
-            class="p-4 text-sm font-mono leading-relaxed whitespace-pre-wrap"
-            :class="{
-              'text-green-400': !output.includes('❌') && output,
-              'text-red-400': output.includes('❌'),
-              'text-gray-500': !output
-            }"
-          >{{ output || '🚀 Нажмите "Запустить" для выполнения кода...' }}</pre>
+          <div class="p-4 text-sm font-mono leading-relaxed">
+            <pre
+              class="whitespace-pre-wrap"
+              :class="{
+                'text-green-400': output && !output.includes('❌') && !output.includes('error'),
+                'text-red-400': output && (output.includes('❌') || output.includes('error')),
+                'text-gray-500': !output
+              }"
+            >{{ output || '🚀 Нажмите "Запустить" для выполнения кода...' }}</pre>
+          </div>
         </div>
       </div>
     </div>

@@ -31,10 +31,10 @@ impl Interpretation {
     }
 
     pub fn run(&mut self, stmts: Vec<Stmt>) -> RuntimeResult<String> {
-        let output = String::new();
+        let mut output = String::new();
 
         for stmt in stmts {
-            match self.run_stmt(stmt)? {
+            match self.run_stmt(stmt, &mut output)? {
                 ExecReturn::Return(_) => break,
                 ExecReturn::None => {}
             }
@@ -43,7 +43,7 @@ impl Interpretation {
         Ok(output)
     }
 
-    fn run_stmt(&mut self, stmt: Stmt) -> RuntimeResult<ExecReturn> {
+    fn run_stmt(&mut self, stmt: Stmt, output: &mut String) -> RuntimeResult<ExecReturn> {
         let span = stmt.span.clone();
         match stmt.kind {
             StmtKind::VerDecl {
@@ -51,13 +51,13 @@ impl Interpretation {
                 value,
                 mutable,
             } => {
-                let v = self.run_expr(value)?;
+                let v = self.run_expr(value, output)?;
                 self.vars.insert(name, Value { value: v, mutable });
                 Ok(ExecReturn::None)
             }
 
             StmtKind::Assign { name, value } => {
-                let new_val = self.run_expr(value)?;
+                let new_val = self.run_expr(value, output)?;
 
                 match self.vars.get_mut(&name) {
                     Some(v) => {
@@ -84,16 +84,16 @@ impl Interpretation {
                 then_branch,
                 else_branch,
             } => {
-                if self.run_expr(cond)? != 0 {
+                if self.run_expr(cond, output)? != 0 {
                     for stmt in then_branch {
-                        match self.run_stmt(stmt)? {
+                        match self.run_stmt(stmt, output)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
                     }
                 } else if let Some(branch) = else_branch {
                     for stmt in branch {
-                        match self.run_stmt(stmt)? {
+                        match self.run_stmt(stmt, output)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
@@ -103,9 +103,9 @@ impl Interpretation {
             }
 
             StmtKind::While { cond, body } => {
-                while self.run_expr(cond.clone())? != 0 {
+                while self.run_expr(cond.clone(), output)? != 0 {
                     for stmt in body.clone() {
-                        match self.run_stmt(stmt)? {
+                        match self.run_stmt(stmt, output)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
@@ -120,31 +120,32 @@ impl Interpretation {
                 incr,
                 body,
             } => {
-                self.run_stmt(*init)?;
+                self.run_stmt(*init, output)?;
 
-                while self.run_expr(cond.clone())? != 0 {
+                while self.run_expr(cond.clone(), output)? != 0 {
                     for stmt in body.clone() {
-                        match self.run_stmt(stmt)? {
+                        match self.run_stmt(stmt, output)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
                     }
 
                     if let Some(e) = incr.clone() {
-                        self.run_expr(e)?;
+                        self.run_expr(e, output)?;
                     }
                 }
                 Ok(ExecReturn::None)
             }
 
             StmtKind::Print(expr) => {
-                let value = self.run_expr(expr)?;
-                println!("{}", value);
+                let value = self.run_expr(expr, output)?;
+                output.push_str(&format!("{}
+", value));
                 Ok(ExecReturn::None)
             }
 
             StmtKind::Expr(expr) => {
-                self.run_expr(expr)?;
+                self.run_expr(expr, output)?;
                 Ok(ExecReturn::None)
             }
 
@@ -154,13 +155,13 @@ impl Interpretation {
             }
 
             StmtKind::Return(expr) => {
-                let value = self.run_expr(expr)?;
+                let value = self.run_expr(expr, output)?;
                 Ok(ExecReturn::Return(value))
             }
         }
     }
 
-    fn run_expr(&mut self, expr: Expr) -> RuntimeResult<i64> {
+    fn run_expr(&mut self, expr: Expr, output: &mut String) -> RuntimeResult<i64> {
         let span = expr.span.clone();
         match expr.kind {
             ExprKind::Num(n) => Ok(n),
@@ -171,24 +172,24 @@ impl Interpretation {
                 .map(|v| v.value)
                 .ok_or(RuntimeError::UndefinedVariable { name, span }),
 
-            ExprKind::Plus(l, r) => Ok(self.run_expr(*l)? + self.run_expr(*r)?),
-            ExprKind::Minus(l, r) => Ok(self.run_expr(*l)? - self.run_expr(*r)?),
-            ExprKind::Star(l, r) => Ok(self.run_expr(*l)? * self.run_expr(*r)?),
+            ExprKind::Plus(l, r) => Ok(self.run_expr(*l, output)? + self.run_expr(*r, output)?),
+            ExprKind::Minus(l, r) => Ok(self.run_expr(*l, output)? - self.run_expr(*r, output)?),
+            ExprKind::Star(l, r) => Ok(self.run_expr(*l, output)? * self.run_expr(*r, output)?),
 
             ExprKind::Slash(l, r) => {
-                let rhs = self.run_expr(*r)?;
+                let rhs = self.run_expr(*r, output)?;
                 if rhs == 0 {
                     return Err(RuntimeError::DivisionByZero);
                 }
-                Ok(self.run_expr(*l)? / rhs)
+                Ok(self.run_expr(*l, output)? / rhs)
             }
 
-            ExprKind::Less(l, r) => Ok((self.run_expr(*l)? < self.run_expr(*r)?) as i64),
-            ExprKind::LessEqual(l, r) => Ok((self.run_expr(*l)? <= self.run_expr(*r)?) as i64),
-            ExprKind::Greater(l, r) => Ok((self.run_expr(*l)? > self.run_expr(*r)?) as i64),
-            ExprKind::GreaterEqual(l, r) => Ok((self.run_expr(*l)? >= self.run_expr(*r)?) as i64),
-            ExprKind::EqualEqual(l, r) => Ok((self.run_expr(*l)? == self.run_expr(*r)?) as i64),
-            ExprKind::NotEqual(l, r) => Ok((self.run_expr(*l)? != self.run_expr(*r)?) as i64),
+            ExprKind::Less(l, r) => Ok((self.run_expr(*l, output)? < self.run_expr(*r, output)?) as i64),
+            ExprKind::LessEqual(l, r) => Ok((self.run_expr(*l, output)? <= self.run_expr(*r, output)?) as i64),
+            ExprKind::Greater(l, r) => Ok((self.run_expr(*l, output)? > self.run_expr(*r, output)?) as i64),
+            ExprKind::GreaterEqual(l, r) => Ok((self.run_expr(*l, output)? >= self.run_expr(*r, output)?) as i64),
+            ExprKind::EqualEqual(l, r) => Ok((self.run_expr(*l, output)? == self.run_expr(*r, output)?) as i64),
+            ExprKind::NotEqual(l, r) => Ok((self.run_expr(*l, output)? != self.run_expr(*r, output)?) as i64),
 
             ExprKind::PreInc(name) => {
                 let v = self
@@ -261,14 +262,14 @@ impl Interpretation {
                     local.vars.insert(
                         param,
                         Value {
-                            value: self.run_expr(arg_expr)?,
+                            value: self.run_expr(arg_expr, output)?,
                             mutable: false,
                         },
                     );
                 }
 
                 for stmt in body {
-                    match local.run_stmt(stmt)? {
+                    match local.run_stmt(stmt, output)? {
                         ExecReturn::Return(v) => return Ok(v),
                         ExecReturn::None => {}
                     }

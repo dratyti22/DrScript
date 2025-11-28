@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Дополнительные стили для Dr Script IDE */
 
 /* Кастомные цвета для темной темы GitHub */
