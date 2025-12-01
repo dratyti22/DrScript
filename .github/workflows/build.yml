@@ -1,50 +1,60 @@
-name: Build DrScript
+name: Build Dr Script IDE
 
 on:
   push:
     branches: [ feature/gui ]
-  pull_request:
-    branches: [ feature/gui ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      # ---------- INSTALL RUST ----------
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+    # --- 1. Установка окружения ---
+    - name: Install MinGW
+      run: |
+        choco install mingw -y
+        refreshenv
 
-      # ---------- BUILD RUST ----------
-      - name: Build Rust library
-        run: cargo build --release --lib
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.38.4'
 
-      # ---------- COPY DLL ----------
-      - name: Copy dr_script.dll to Flutter project	
-        run: |
- 	  New-Item -ItemType Directory -Force -Path dr_script_flutter/windows/runner/resources | Out-Null
-          Copy-Item target\release\dr_script.dll dr_script_flutter\windows\runner\resources\dr_script.dll
+    - name: Setup Rust (MSVC)
+      run: rustup toolchain install stable-x86_64-pc-windows-msvc
 
+    # --- 2. Сборка RUST ---
+    - name: Build Rust library (MSVC)
+      run: |
+        rustup default stable-x86_64-pc-windows-msvc
+        cargo build --release --target x86_64-pc-windows-msvc --lib
 
-      # ---------- INSTALL FLUTTER ----------
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
+    # --- 3. Сборка FLUTTER ---
+    - name: Flutter deps
+      working-directory: dr_script_flutter
+      run: flutter pub get
 
-      # ---------- BUILD FLUTTER ----------
-      - name: Build Flutter Windows
-        run: flutter build windows --release
-        working-directory: dr_script_flutter
+    - name: Build Windows (MSVC)
+      working-directory: dr_script_flutter
+      run: flutter build windows --release
 
-      # ---------- SAVE ARTIFACT ----------
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DrScript-Windows-Build
-          path: dr_script_flutter/build/windows/runner/Release
+    # --- 4. Скачивание зависимостей (ВАЖНО: ДО копирования) ---
+    - name: Download VC Redist
+      run: curl -LO https://aka.ms/vs/17/release/vc_redist.x64.exe
 
+    # --- 5. Копирование файлов в папку Release ---
+    # Мы берем DLL из Rust папки и скачанный VC Redist
+    # И кладем их туда, где лежит .exe файл Flutter
+    - name: Copy Dependencies to Release Folder
+      run: |
+        copy target\x86_64-pc-windows-msvc\release\dr_script.dll dr_script_flutter\build\windows\x64\runner\Release\
+        copy vc_redist.x64.exe dr_script_flutter\build\windows\x64\runner\Release\
+
+    # --- 6. Загрузка артефакта ---
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: dr-script-ide-windows
+        path: dr_script_flutter/build/windows/x64/runner/Release/
