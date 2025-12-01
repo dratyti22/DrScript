@@ -1,18 +1,19 @@
 use crate::ast::{Expr, ExprKind, Stmt, StmtKind};
 use crate::type_error::RuntimeError;
 use std::collections::HashMap;
+use crate::type_values::Type;
 
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
 
 #[derive(Debug, Clone)]
 struct Value {
-    value: i64,
+    value: Type,
     mutable: bool,
 }
 
 #[derive(Debug)]
 enum ExecReturn {
-    Return(i64),
+    Return(Type),
     None,
 }
 
@@ -84,7 +85,7 @@ impl Interpretation {
                 then_branch,
                 else_branch,
             } => {
-                if self.run_expr(cond, output)? != 0 {
+                if self.run_expr(cond, output)? != Type::Int(0) {
                     for stmt in then_branch {
                         match self.run_stmt(stmt, output)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
@@ -103,7 +104,7 @@ impl Interpretation {
             }
 
             StmtKind::While { cond, body } => {
-                while self.run_expr(cond.clone(), output)? != 0 {
+                while self.run_expr(cond.clone(), output)? != Type::Int(0) {
                     for stmt in body.clone() {
                         match self.run_stmt(stmt, output)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
@@ -122,7 +123,7 @@ impl Interpretation {
             } => {
                 self.run_stmt(*init, output)?;
 
-                while self.run_expr(cond.clone(), output)? != 0 {
+                while self.run_expr(cond.clone(), output)? != Type::Int(0){
                     for stmt in body.clone() {
                         match self.run_stmt(stmt, output)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
@@ -139,8 +140,7 @@ impl Interpretation {
 
             StmtKind::Print(expr) => {
                 let value = self.run_expr(expr, output)?;
-                output.push_str(&format!("{}
-", value));
+                output.push_str(&format!("{}\n", value));
                 Ok(ExecReturn::None)
             }
 
@@ -161,15 +161,16 @@ impl Interpretation {
         }
     }
 
-    fn run_expr(&mut self, expr: Expr, output: &mut String) -> RuntimeResult<i64> {
+    fn run_expr(&mut self, expr: Expr, output: &mut String) -> RuntimeResult<Type> {
         let span = expr.span.clone();
         match expr.kind {
-            ExprKind::Num(n) => Ok(n),
+            ExprKind::Num(n) => Ok(Type::Int(n)),
+            ExprKind::Str(s) => Ok(Type::Str(s)),
 
             ExprKind::Ident(name) => self
                 .vars
                 .get(&name)
-                .map(|v| v.value)
+                .map(|v| v.value.clone())
                 .ok_or(RuntimeError::UndefinedVariable { name, span }),
 
             ExprKind::Plus(l, r) => Ok(self.run_expr(*l, output)? + self.run_expr(*r, output)?),
@@ -178,26 +179,26 @@ impl Interpretation {
 
             ExprKind::Slash(l, r) => {
                 let rhs = self.run_expr(*r, output)?;
-                if rhs == 0 {
+                if rhs.is_zero() {
                     return Err(RuntimeError::DivisionByZero);
                 }
                 Ok(self.run_expr(*l, output)? / rhs)
             }
 
-            ExprKind::Less(l, r) => Ok((self.run_expr(*l, output)? < self.run_expr(*r, output)?) as i64),
-            ExprKind::LessEqual(l, r) => Ok((self.run_expr(*l, output)? <= self.run_expr(*r, output)?) as i64),
-            ExprKind::Greater(l, r) => Ok((self.run_expr(*l, output)? > self.run_expr(*r, output)?) as i64),
-            ExprKind::GreaterEqual(l, r) => Ok((self.run_expr(*l, output)? >= self.run_expr(*r, output)?) as i64),
-            ExprKind::EqualEqual(l, r) => Ok((self.run_expr(*l, output)? == self.run_expr(*r, output)?) as i64),
-            ExprKind::NotEqual(l, r) => Ok((self.run_expr(*l, output)? != self.run_expr(*r, output)?) as i64),
+            ExprKind::Less(l, r) => Ok(Type::Int((self.run_expr(*l, output)? < self.run_expr(*r, output)?) as i64)),
+            ExprKind::LessEqual(l, r) => Ok(Type::Int((self.run_expr(*l, output)? <= self.run_expr(*r, output)?) as i64)),
+            ExprKind::Greater(l, r) => Ok(Type::Int((self.run_expr(*l, output)? > self.run_expr(*r, output)?) as i64)),
+            ExprKind::GreaterEqual(l, r) => Ok(Type::Int((self.run_expr(*l, output)? >= self.run_expr(*r, output)?) as i64)),
+            ExprKind::EqualEqual(l, r) => Ok(Type::Int((self.run_expr(*l, output)? == self.run_expr(*r, output)?) as i64)),
+            ExprKind::NotEqual(l, r) => Ok(Type::Int((self.run_expr(*l, output)? != self.run_expr(*r, output)?) as i64)),
 
             ExprKind::PreInc(name) => {
                 let v = self
                     .vars
                     .get_mut(&name)
                     .ok_or(RuntimeError::UndefinedVariable { name, span })?;
-                v.value += 1;
-                Ok(v.value)
+                v.value += Type::Int(1);
+                Ok(v.value.clone())
             }
 
             ExprKind::PreDec(name) => {
@@ -205,8 +206,8 @@ impl Interpretation {
                     .vars
                     .get_mut(&name)
                     .ok_or(RuntimeError::UndefinedVariable { name, span })?;
-                v.value -= 1;
-                Ok(v.value)
+                v.value -= Type::Int(1);
+                Ok(v.value.clone())
             }
 
             ExprKind::PostInc(name) => {
@@ -214,8 +215,8 @@ impl Interpretation {
                     .vars
                     .get_mut(&name)
                     .ok_or(RuntimeError::UndefinedVariable { name, span })?;
-                let old = v.value;
-                v.value += 1;
+                let old = v.value.clone();
+                v.value += Type::Int(1);
                 Ok(old)
             }
 
@@ -224,8 +225,8 @@ impl Interpretation {
                     .vars
                     .get_mut(&name)
                     .ok_or(RuntimeError::UndefinedVariable { name, span })?;
-                let old = v.value;
-                v.value -= 1;
+                let old = v.value.clone();
+                v.value -= Type::Int(1);
                 Ok(old)
             }
 
@@ -275,7 +276,7 @@ impl Interpretation {
                     }
                 }
 
-                Ok(0)
+                Ok(Type::Int(0))
             }
         }
     }

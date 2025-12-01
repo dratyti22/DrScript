@@ -3,6 +3,7 @@ pub mod interpreter;
 pub mod lexer;
 pub mod parser;
 pub mod type_error;
+pub mod type_values;
 
 use crate::interpreter::Interpretation;
 use crate::parser::ParserToken;

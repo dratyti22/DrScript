@@ -1,20 +1,6 @@
-for (i = 1; i <= 10; i++) {
-    print(3 * i);  // таблица умножения на 3
-}
+var x = "Привет, Мир!";
+print(x);
 
-// Вложенные циклы
-for (i = 1; i <= 3; i++) {
-    for (j = 1; j <= 3; j++) {
-        print(i * j);
-    }
-}
+var y = x + 124;
+print(y);
 
-fun add(n) {
-    if n <= 1 {
-        return 1;
-    } else {
-        return n * add(n-1);
-    }
-}
-print(add(10));
-print(afd);

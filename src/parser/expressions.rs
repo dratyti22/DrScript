@@ -232,7 +232,10 @@ impl ParserToken {
                 token: Token::Number(n),
                 position,
             }) => Ok(self.make_expr(ExprKind::Num(n), position)),
-
+            Some(TokenPosition{
+                token: Token::Str(s),
+                position
+                 }) => Ok(self.make_expr(ExprKind::Str(s), position)),
             Some(TokenPosition {
                 token: Token::Ident(name),
                 position,

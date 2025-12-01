@@ -13,6 +13,7 @@ pub type Stmt = Node<StmtKind>;
 pub enum ExprKind {
     Num(i64),
     Ident(String),
+    Str(String),
     Plus(Box<Expr>, Box<Expr>),
     Minus(Box<Expr>, Box<Expr>),
     Star(Box<Expr>, Box<Expr>),

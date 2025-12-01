@@ -8,11 +8,12 @@ mod interpreter;
 mod lexer;
 mod parser;
 mod type_error;
+mod type_values;
 
+use crate::type_error::{ParseError, ParseErrorKind};
 use cli::Cli;
 use interpreter::Interpretation;
 use std::panic;
-use crate::type_error::{ParseError, ParseErrorKind};
 
 fn main() {
     if let Err(err) = run() {
@@ -38,7 +39,13 @@ fn run() -> Result<(), type_error::ParseError> {
 
     // Обработка runtime ошибок
     match i.run(ast) {
-        Ok(_) => Ok(()),
+        Ok(output) => {
+            for line in output.lines() {
+                println!("{}", line);
+            }
+
+            Ok(())
+        }
         Err(e) => {
             let span = e.span();
             Err(ParseError::new(

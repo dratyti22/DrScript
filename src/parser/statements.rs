@@ -65,9 +65,9 @@ impl ParserToken {
                 position: _,
             }) => self.parse_var_decl(),
             Some(TokenPosition {
-                token: Token::Ident(name),
+                token: Token::Print,
                 position: _,
-            }) if name == "print" => self.parse_print(),
+            }) => self.parse_print(),
             Some(TokenPosition {
                 token: Token::Ident(_),
                 position: _,

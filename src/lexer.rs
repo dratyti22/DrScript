@@ -5,6 +5,8 @@ use logos::Logos;
 #[logos(skip r"[ \t\f]+")]
 #[logos(skip r"//[^\n]*")]
 pub enum Token {
+    #[token("print")]
+Print,
     #[token("var")]
     Var,
     #[token("ver")]
@@ -65,6 +67,11 @@ pub enum Token {
     Comma,
     #[token("\n")]
     NewLine,
+    #[regex(r#""([^"\\]|\\.)*""#, |lex| {
+        let s = lex.slice();
+        s[1..s.len()-1].to_string()
+    })]
+    Str(String),
 }
 
 pub fn lex(input: &str) -> Vec<TokenPosition> {
