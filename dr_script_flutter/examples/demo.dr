@@ -1,0 +1,111 @@
+// Демонстрационный файл Dr Script
+// Показывает основные возможности языка
+
+// Вывод текста и чисел
+print("Добро пожаловать в Dr Script!");
+print("Версия: 1.0.0");
+print(42);
+print(3.14159);
+
+// Переменные
+var name = "Dr Script";
+var version = 1.0;
+var isActive = true;
+
+print("Язык: " + name);
+print("Версия: " + version);
+
+// Условные операторы
+var x = 10;
+var y = 5;
+
+if (x > y) {
+    print("x больше y");
+    print("Результат: " + (x - y));
+} else if (x < y) {
+    print("x меньше y");
+} else {
+    print("x равно y");
+}
+
+// Циклы
+print("\nЦикл for:");
+for (var i = 0; i < 5; i++) {
+    print("Итерация " + i + ": " + (i * 2));
+}
+
+print("\nЦикл while:");
+var counter = 0;
+while (counter < 3) {
+    print("Счетчик: " + counter);
+    counter = counter + 1;
+}
+
+// Функции
+function greet(name) {
+    return "Привет, " + name + "!";
+}
+
+function factorial(n) {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+function fibonacci(n) {
+    if (n <= 1) {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+// Использование функций
+print("\nФункции:");
+print(greet("Программист"));
+print("Факториал 5: " + factorial(5));
+print("Фибоначчи 8: " + fibonacci(8));
+
+// Массивы (если поддерживаются)
+var numbers = [1, 2, 3, 4, 5];
+print("\nМассив: " + numbers);
+
+// Объекты (если поддерживаются)
+var person = {
+    name: "Иван",
+    age: 25,
+    city: "Москва"
+};
+
+print("\nОбъект:");
+print("Имя: " + person.name);
+print("Возраст: " + person.age);
+print("Город: " + person.city);
+
+// Математические операции
+print("\nМатематика:");
+print("2 + 3 = " + (2 + 3));
+print("10 - 4 = " + (10 - 4));
+print("6 * 7 = " + (6 * 7));
+print("15 / 3 = " + (15 / 3));
+print("17 % 5 = " + (17 % 5));
+
+// Логические операции
+var a = true;
+var b = false;
+
+print("\nЛогика:");
+print("true && false = " + (a && b));
+print("true || false = " + (a || b));
+print("!true = " + (!a));
+
+// Сравнения
+print("\nСравнения:");
+print("5 == 5: " + (5 == 5));
+print("5 != 3: " + (5 != 3));
+print("10 > 5: " + (10 > 5));
+print("3 < 8: " + (3 < 8));
+print("7 >= 7: " + (7 >= 7));
+print("4 <= 6: " + (4 <= 6));
+
+print("\n🎉 Демонстрация завершена!");

@@ -9,6 +9,14 @@ repository = "https://github.com/dratyti/dr-script"
 keywords = ["programming-language", "interpreter", "rust"]
 categories = ["development-tools"]
 
+[lib]
+name = "dr_script"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "dr-script"
+path = "src/main.rs"
+
 [dependencies]
 logos = "0.15.1"
 clap = {version = "4.5.51", features = ["derive"]}

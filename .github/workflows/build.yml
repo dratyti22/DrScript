@@ -1,0 +1,50 @@
+name: Build DrScript
+
+on:
+  push:
+    branches: [ feature/gui ]
+  pull_request:
+    branches: [ feature/gui ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------- INSTALL RUST ----------
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # ---------- BUILD RUST ----------
+      - name: Build Rust library
+        run: cargo build --release --lib
+
+      # ---------- COPY DLL ----------
+      - name: Copy dr_script.dll to Flutter project	
+        run: |
+ 	  New-Item -ItemType Directory -Force -Path dr_script_flutter/windows/runner/resources | Out-Null
+          Copy-Item target\release\dr_script.dll dr_script_flutter\windows\runner\resources\dr_script.dll
+
+
+      # ---------- INSTALL FLUTTER ----------
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+
+      # ---------- BUILD FLUTTER ----------
+      - name: Build Flutter Windows
+        run: flutter build windows --release
+        working-directory: dr_script_flutter
+
+      # ---------- SAVE ARTIFACT ----------
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DrScript-Windows-Build
+          path: dr_script_flutter/build/windows/runner/Release
+
