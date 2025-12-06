@@ -89,7 +89,9 @@ impl Mul for Type {
     fn mul(self, rhs: Type) -> Self::Output {
         match (self, rhs) {
             (Type::Int(a), Type::Int(b)) => Type::Int(a * b),
-            _ => panic!("Cannot multiply non-ints"),
+            (Type::Str(a), Type::Int(b)) => Type::Str(a.repeat(b as usize)),
+            (Type::Int(a), Type::Str(b)) => Type::Str(b.repeat(a as usize)),
+            (Type::Str(a), Type::Str(b)) => panic!("Cannot multiply strings: {} and {}", a, b)
         }
     }
 }
