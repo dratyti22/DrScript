@@ -25,7 +25,7 @@ pub extern "C" fn run_dr_script(code: *const c_char) -> *mut c_char {
     };
 
     let result = execute_dr_code(rust_str);
-    
+
     match CString::new(result) {
         Ok(c_string) => c_string.into_raw(),
         Err(_) => std::ptr::null_mut(),
@@ -43,16 +43,22 @@ pub extern "C" fn free_dr_string(ptr: *mut c_char) {
 
 fn execute_dr_code(code: &str) -> String {
     let tokens = lex(code);
-    
+
     let mut parser = ParserToken::new(tokens);
     let ast = match parser.parse() {
+        // !!! ИЗМЕНЕНИЕ ЗДЕСЬ !!!
+        // Вместо отладочного вывода, вызываем метод, который форматирует отчет
         Ok(ast) => ast,
-        Err(e) => return format!("Parse Error: {:?}", e),
+        Err(e) => return e.get_report_string(),
     };
 
     let mut interpreter = Interpretation::new();
     match interpreter.run(ast) {
         Ok(output) => output,
-        Err(e) => format!("Runtime Error: {:?}", e),
+        // Ошибки выполнения также должны быть красиво отформатированы!
+        // Поскольку у вас нет метода report() для RuntimeError, пока оставим так,
+        // но в будущем нужно добавить такой же метод и для RuntimeErrors.
+        Err(e) => format!("RUNTIME ERROR: {:?}", e),
     }
 }
+

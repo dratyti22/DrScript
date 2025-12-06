@@ -1,6 +1,8 @@
-var x = "Привет, Мир!";
-print(x);
-
-var y = x + 124;
-print(y);
-
+print("Привет, Dr Script!");
+var x = 10
+var y = 5;
+print("Сумма: " + (x + y));
+for (i=0;i<3;i++) {
+  print("Цикл " + i);
+}
+print(56);

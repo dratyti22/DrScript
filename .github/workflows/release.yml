@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  release:
+  create_release:
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
@@ -23,54 +23,72 @@ jobs:
         prerelease: false
 
   build-and-upload:
-    needs: release
+    needs: create_release
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
         include:
         - os: windows-latest
-          artifact_name: dr-script-ide-windows.zip
-          asset_name: dr-script-ide-windows-${{ github.ref_name }}.zip
+          artifact_ext: .zip
+          asset_ext: .zip
+          rust_target: x86_64-pc-windows-msvc
         - os: ubuntu-latest
-          artifact_name: dr-script-ide-linux.tar.gz
-          asset_name: dr-script-ide-linux-${{ github.ref_name }}.tar.gz
-    
+          artifact_ext: .tar.gz
+          asset_ext: .tar.gz
+          rust_target: x86_64-unknown-linux-gnu
+
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
-    
+
+    # --- 1. Установка окружения ---
+
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.24.0'
-        
-    - name: Setup Rust
+
+    # Установка нужного тулчейна Rust для кросс-компиляции/сборки
+    - name: Setup Rust Toolchain
       uses: dtolnay/rust-toolchain@stable
-      
+      with:
+        toolchain: stable
+        target: ${{ matrix.rust_target }}
+
     - name: Install Linux dependencies
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
         sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
-        
-    - name: Build Dr Script library (Windows)
+
+    # --- 2. Сборка RUST FFI и размещение ---
+
+    # Общая команда для сборки FFI-библиотеки
+    - name: Build Rust Library
+      run: cargo build --release --lib --target ${{ matrix.rust_target }}
+
+    # Копирование DLL для Windows
+    - name: Copy DLL for Windows
       if: matrix.os == 'windows-latest'
       run: |
-        cd ..
-        cargo build --release --lib
-        copy target\release\dr_script.dll dr_script_flutter\windows\runner\
-        
-    - name: Build Dr Script library (Linux)
+        # Копируем dr_script.dll в папку, откуда Flutter берет FFI (windows/runner/)
+        copy target\${{ matrix.rust_target }}\release\dr_script.dll dr_script_flutter\windows\runner\dr_script.dll
+
+    # Копирование SO для Linux
+    - name: Copy SO for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
-        cd ..
-        cargo build --release --lib
-        cp target/release/libdr_script.so dr_script_flutter/
-        
+        # Копируем libdr_script.so в корневую папку Flutter (dr_script_flutter/)
+        cp target/${{ matrix.rust_target }}/release/libdr_script.so dr_script_flutter/
+
+    # --- 3. Сборка FLUTTER ---
+
     - name: Flutter dependencies
+      working-directory: dr_script_flutter
       run: flutter pub get
-      
+
     - name: Build app
+      working-directory: dr_script_flutter
       run: |
         if [ "${{ matrix.os }}" == "windows-latest" ]; then
           flutter build windows --release
@@ -78,25 +96,35 @@ jobs:
           flutter build linux --release
         fi
       shell: bash
-      
+
+    # --- 4. Упаковка и Загрузка ---
+
     - name: Package Windows
       if: matrix.os == 'windows-latest'
       run: |
-        cd build/windows/x64/runner/Release
-        7z a ../../../../../${{ matrix.artifact_name }} *
-        
+        # Имя артефакта, которое будет использоваться для загрузки
+        $ARTIFACT_NAME = "dr-script-ide-windows-${{ github.ref_name }}${{ matrix.artifact_ext }}"
+        # Переходим в папку с релизом
+        cd dr_script_flutter\build\windows\x64\runner\Release
+        # Архивируем все содержимое
+        7z a ..\..\..\..\$ARTIFACT_NAME *
+        # Переносим архив в корень, чтобы actions/upload-release-asset его нашел
+        Move-Item ..\..\..\..\$ARTIFACT_NAME $env:GITHUB_WORKSPACE
+      shell: pwsh
+
     - name: Package Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
-        cd build/linux/x64/release
-        tar -czf ../../../../${{ matrix.artifact_name }} bundle/
-        
+        ARTIFACT_NAME="dr-script-ide-linux-${{ github.ref_name }}${{ matrix.artifact_ext }}"
+        # Создаем tar.gz из папки bundle (содержит бинарник и assets)
+        tar -czf "$ARTIFACT_NAME" -C dr_script_flutter/build/linux/x64/release bundle
+
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        upload_url: ${{ needs.release.outputs.upload_url }}
-        asset_path: ./${{ matrix.artifact_name }}
-        asset_name: ${{ matrix.asset_name }}
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ./dr-script-ide-${{ matrix.os }}${{ matrix.artifact_ext }}
+        asset_name: dr-script-ide-${{ matrix.os }}-${{ github.ref_name }}${{ matrix.asset_ext }}
         asset_content_type: application/octet-stream

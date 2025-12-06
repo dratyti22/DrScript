@@ -46,6 +46,38 @@ impl ParseError {
             source: source.unwrap_or_default(),
         }
     }
+    pub fn get_report_string(&self) -> String {
+        // Мы будем использовать стандартные символы для подчеркивания вместо крейта colored
+        let mut report = String::new();
+
+        // Заголовок ошибки
+        report.push_str(&format!("ERROR: {}\n", format!("{:?}", self.kind)));
+
+        // Позиция ошибки
+        report.push_str(&format!(
+            " --> {}:{}:{}\n",
+            self.file, self.span.start.line, self.span.start.column
+        ));
+
+        let line = self
+            .source
+            .lines()
+            .nth(self.span.start.line.saturating_sub(1))
+            .unwrap_or("");
+
+        // Строка с кодом
+        report.push_str(&format!("\n{} | {}\n", self.span.start.line, line));
+
+        // Подчеркивание '^'
+        report.push_str(&format!(
+            "  | {}{}\n",
+            " ".repeat(self.span.start.column.saturating_sub(1)),
+            "^" // Просто символ, без цвета
+        ));
+
+        // Для удобства Flutter добавим маркер в начало
+        format!("REPORT_START:\n{}", report)
+    }
     pub fn report(&self) {
         use colored::*;
 
@@ -134,9 +166,9 @@ pub enum BlockError {
 // ==================== RUNTIME ERRORS ====================
 #[derive(Debug)]
 pub enum RuntimeError {
-    UndefinedVariable{name: String, span: Span},
-    UndefinedFunction{name: String, span: Span},
-    ImmutableAssignment{name: String, span: Span},
+    UndefinedVariable { name: String, span: Span },
+    UndefinedFunction { name: String, span: Span },
+    ImmutableAssignment { name: String, span: Span },
     ArgumentMismatch { expected: usize, got: usize },
     DivisionByZero,
 }
@@ -155,8 +187,12 @@ impl RuntimeError {
 impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RuntimeError::UndefinedVariable { name, .. } => write!(f, "Undefined variable: {}", name),
-            RuntimeError::UndefinedFunction { name, .. } => write!(f, "Undefined function: {}", name),
+            RuntimeError::UndefinedVariable { name, .. } => {
+                write!(f, "Undefined variable: {}", name)
+            }
+            RuntimeError::UndefinedFunction { name, .. } => {
+                write!(f, "Undefined function: {}", name)
+            }
             RuntimeError::ImmutableAssignment { name, .. } => {
                 write!(f, "Cannot assign to immutable variable: {}", name)
             }
