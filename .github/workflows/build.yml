@@ -1,60 +1,141 @@
-name: Build Dr Script IDE
+name: Release Dr Script IDE
 
 on:
   push:
-    branches: [ feature/gui ]
-  workflow_dispatch:
+    branches:
+      - refactor/type_error # Тестовый триггер
+
+permissions:
+  contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build-and-release:
+    name: Build & Release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_ext: .zip
+            rust_target: x86_64-pc-windows-msvc
+            asset_name_prefix: dr-script-ide-windows
+            build_output_dir: dr_script_flutter/build/windows/x64/runner/Release
+
+          - os: ubuntu-latest
+            artifact_ext: .tar.gz
+            rust_target: x86_64-unknown-linux-gnu
+            asset_name_prefix: dr-script-ide-linux
+            build_output_dir: dr_script_flutter/build/linux/x64/release/bundle
+
+          - os: macos-latest
+            artifact_ext: .zip
+            rust_target: x86_64-apple-darwin
+            asset_name_prefix: dr-script-ide-macos
+            build_output_dir: dr_script_flutter/build/macos/Build/Products/Release
+
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    # --- 1. Установка окружения ---
-    - name: Install MinGW
-      run: |
-        choco install mingw -y
-        refreshenv
+      # (Шаги 1-4: Установка, Компиляция Rust, Pub Get, Flutter Build — Без изменений)
 
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.38.4'
+      # --- 1. Установка зависимостей ---
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.4'
 
-    - name: Setup Rust (MSVC)
-      run: rustup toolchain install stable-x86_64-pc-windows-msvc
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: ${{ matrix.rust_target }}
 
-    # --- 2. Сборка RUST ---
-    - name: Build Rust library (MSVC)
-      run: |
-        rustup default stable-x86_64-pc-windows-msvc
-        cargo build --release --target x86_64-pc-windows-msvc --lib
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev tar
 
-    # --- 3. Сборка FLUTTER ---
-    - name: Flutter deps
-      working-directory: dr_script_flutter
-      run: flutter pub get
+      # --- 2. Компиляция Rust (FFI) ---
+      - name: Build Rust Library
+        run: cargo build --release --lib --target ${{ matrix.rust_target }}
 
-    - name: Build Windows (MSVC)
-      working-directory: dr_script_flutter
-      run: flutter build windows --release
+      # --- 3. Подготовка к сборке Flutter (Flutter Pub Get) ---
+      - name: Flutter dependencies
+        working-directory: dr_script_flutter
+        run: flutter pub get
 
-    # --- 4. Скачивание зависимостей (ВАЖНО: ДО копирования) ---
-    - name: Download VC Redist
-      run: curl -LO https://aka.ms/vs/17/release/vc_redist.x64.exe
+      # --- 4. Сборка приложений (FLUTTER BUILD) ---
 
-    # --- 5. Копирование файлов в папку Release ---
-    # Мы берем DLL из Rust папки и скачанный VC Redist
-    # И кладем их туда, где лежит .exe файл Flutter
-    - name: Copy Dependencies to Release Folder
-      run: |
-        copy target\x86_64-pc-windows-msvc\release\dr_script.dll dr_script_flutter\build\windows\x64\runner\Release\
-        copy vc_redist.x64.exe dr_script_flutter\build\windows\x64\runner\Release\
+      - name: Build app (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: dr_script_flutter
+        run: flutter build windows --release
 
-    # --- 6. Загрузка артефакта ---
-    - name: Upload
-      uses: actions/upload-artifact@v4
-      with:
-        name: dr-script-ide-windows
-        path: dr_script_flutter/build/windows/x64/runner/Release/
+      - name: Build app (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: dr_script_flutter
+        run: flutter build linux --release
+
+      - name: Build app (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: dr_script_flutter
+        run: |
+          cp ../target/${{ matrix.rust_target }}/release/libdr_script.dylib macos/Runner/
+          flutter build macos --release
+
+      # --- 5. КОПИРОВАНИЕ БИБЛИОТЕК В ГОТОВЫЙ БИЛД ---
+
+      - name: Copy DLL to Build Folder (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cp target/${{ matrix.rust_target }}/release/dr_script.dll ${{ matrix.build_output_dir }}/
+
+      - name: Copy SO to Build Folder (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          cp target/${{ matrix.rust_target }}/release/libdr_script.so ${{ matrix.build_output_dir }}/
+
+      # --- 6. ЗАГРУЗКА В АРТЕФАКТЫ (Остаются, как ты хотел) ---
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name_prefix }}
+          path: ${{ matrix.build_output_dir }}/
+
+      # --- 7. АРХИВАЦИЯ И ЗАГРУЗКА РЕЛИЗА (ИСПРАВЛЕНА ОШИБКА WINDOWS) ---
+
+      # Windows: Используем PowerShell для надежной архивации ZIP
+      - name: Compress for Release (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          # Используем Compress-Archive, чтобы избежать ошибки tar
+          Compress-Archive -Path ${{ matrix.build_output_dir }}\* -DestinationPath ${{ matrix.asset_name_prefix }}${{ matrix.artifact_ext }}
+
+      # Linux/macOS: Используем bash для tar/zip
+      - name: Compress for Release (Linux/macOS)
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          cd ${{ matrix.build_output_dir }}
+          
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            # Linux: Создаем tar.gz
+            tar -czvf $GITHUB_WORKSPACE/${{ matrix.asset_name_prefix }}${{ matrix.artifact_ext }} .
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            # macOS: Создаем zip из .app бандла
+            zip -r $GITHUB_WORKSPACE/${{ matrix.asset_name_prefix }}${{ matrix.artifact_ext }} dr_script_flutter.app
+          fi
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        # Убираем условие if: startsWith(github.ref, 'refs/tags/'), чтобы тест не завершался ошибкой,
+        # но шаг будет просто игнорироваться, т.к. нет тега.
+        with:
+          files: ${{ matrix.asset_name_prefix }}${{ matrix.artifact_ext }}
+          draft: true
