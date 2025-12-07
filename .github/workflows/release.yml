@@ -3,7 +3,9 @@ name: Release Dr Script IDE
 on:
   push:
     branches:
-      - develop
+      - refactor/workflow-release
+permissions:
+  contents: write  # <--- ДОБАВЛЕНО: Явно даем право на запись в репозиторий
 
 jobs:
   create_release:
@@ -17,10 +19,13 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Dr Script IDE ${{ github.ref }}
-        draft: false
-        prerelease: false
+        # ВНИМАНИЕ: Если вы запускаете релиз из ветки, `github.ref` будет иметь формат
+        # refs/heads/refactor/workflow-release. Это НЕвалидный тег для GitHub.
+        # Для тестирования из ветки лучше создать временный тег.
+        tag_name: test-branch-${{ github.sha }}
+        release_name: Dr Script IDE Test ${{ github.ref_name }}
+        draft: true # Установите черновик (draft) для тестовых сборок
+        prerelease: true # Установите предварительный релиз
 
   build-and-upload:
     needs: create_release
@@ -53,7 +58,7 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.24.0'
+        flutter-version: '3.38.4'
 
     - name: Setup Rust Toolchain
       uses: dtolnay/rust-toolchain@stable
