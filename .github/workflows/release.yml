@@ -2,155 +2,134 @@ name: Release Dr Script IDE
 
 on:
   push:
-    branches:
-      - develop
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
-  create_release:
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Dr Script IDE ${{ github.ref }}
-        draft: false
-        prerelease: false
-
-  build-and-upload:
-    needs: create_release
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
-        include:
-        - os: windows-latest
-          artifact_ext: .zip
-          asset_ext: .zip
-          rust_target: x86_64-pc-windows-msvc
-          asset_name_prefix: dr-script-ide-windows
-        - os: ubuntu-latest
-          artifact_ext: .tar.gz
-          asset_ext: .tar.gz
-          rust_target: x86_64-unknown-linux-gnu
-          asset_name_prefix: dr-script-ide-linux
-        - os: macos-latest
-          artifact_ext: .zip
-          asset_ext: .zip
-          rust_target: x86_64-apple-darwin
-          asset_name_prefix: dr-script-ide-macos
-
+  build-and-release:
+    name: Build & Release (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_ext: .zip
+            rust_target: x86_64-pc-windows-msvc
+            asset_name_prefix: dr-script-ide-windows
+            # Точный путь, куда Flutter кладет exe
+            build_output_dir: dr_script_flutter/build/windows/x64/runner/Release
+
+          - os: ubuntu-latest
+            artifact_ext: .tar.gz
+            rust_target: x86_64-unknown-linux-gnu
+            asset_name_prefix: dr-script-ide-linux
+            # Точный путь, куда Flutter кладет бинарник Linux
+            build_output_dir: dr_script_flutter/build/linux/x64/release/bundle
+
+          - os: macos-latest
+            artifact_ext: .zip
+            rust_target: x86_64-apple-darwin
+            asset_name_prefix: dr-script-ide-macos
+            # Точный путь к .app файлу
+            build_output_dir: dr_script_flutter/build/macos/Build/Products/Release
+
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    # --- 1. Установка окружения ---
+      # --- 1. Установка зависимостей ---
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.4'
 
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.24.0'
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: ${{ matrix.rust_target }}
 
-    - name: Setup Rust Toolchain
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
-        target: ${{ matrix.rust_target }}
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev tar
 
-    - name: Install Linux dependencies
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+      # --- 2. Компиляция Rust (FFI) ---
+      - name: Build Rust Library
+        run: cargo build --release --lib --target ${{ matrix.rust_target }}
 
-    # --- 2. Сборка RUST FFI ---
+      # --- 3. Подготовка к сборке Flutter (Flutter Pub Get) ---
+      - name: Flutter dependencies
+        working-directory: dr_script_flutter
+        run: flutter pub get
 
-    - name: Build Rust Library
-      run: cargo build --release --lib --target ${{ matrix.rust_target }}
+      # --- 4. Сборка приложений (FLUTTER BUILD) ---
 
-    # --- 3. Размещение FFI Библиотек (ИСПРАВЛЕНО: РАЗДЕЛЕНО НА ШАГИ) ---
+      - name: Build app (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: dr_script_flutter
+        run: flutter build windows --release
 
-    - name: Copy FFI Library (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        copy target\${{ matrix.rust_target }}\release\dr_script.dll dr_script_flutter\windows\runner\dr_script.dll
-      shell: cmd
+      - name: Build app (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: dr_script_flutter
+        run: flutter build linux --release
 
-    - name: Copy FFI Library (Linux)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        cp target/${{ matrix.rust_target }}/release/libdr_script.so dr_script_flutter/
-      shell: bash
-
-    - name: Copy FFI Library (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        cp target/${{ matrix.rust_target }}/release/libdr_script.dylib dr_script_flutter/macos/Runner/
-      shell: bash
-
-    # --- 4. Сборка FLUTTER ---
-
-    - name: Flutter dependencies
-      working-directory: dr_script_flutter
-      run: flutter pub get
-
-    - name: Build app
-      working-directory: dr_script_flutter
-      run: |
-        if [ "${{ matrix.os }}" == "windows-latest" ]; then
-          flutter build windows --release
-        elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-          flutter build linux --release
-        elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+      - name: Build app (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: dr_script_flutter
+        # Для macOS копируем dylib ДО сборки, чтобы она попала в бандл (особенность Mac)
+        run: |
+          cp ../target/${{ matrix.rust_target }}/release/libdr_script.dylib macos/Runner/
           flutter build macos --release
-        fi
-      shell: bash
 
-    # --- 5. Упаковка и Загрузка ---
+      # --- 5. КОПИРОВАНИЕ БИБЛИОТЕК В ГОТОВЫЙ БИЛД (Самое важное!) ---
 
-    - name: Set Artifact Name
-      id: set_artifact_name
-      run: |
-        # Формируем имя артефакта заранее
-        ARTIFACT_NAME="${{ matrix.asset_name_prefix }}-${{ github.ref_name }}${{ matrix.artifact_ext }}"
-        echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-      shell: bash
+      # Windows: Берем DLL и кладем РЯДОМ с .exe в папку Release (как в твоем примере)
+      - name: Copy DLL to Build Folder (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          copy target\${{ matrix.rust_target }}\release\dr_script.dll ${{ matrix.build_output_dir }}\
+        shell: cmd
 
-    - name: Package Windows
-      if: matrix.os == 'windows-latest'
-      run: |
-        $ARTIFACT_NAME = "${{ steps.set_artifact_name.outputs.artifact_name }}"
-        cd dr_script_flutter\build\windows\x64\runner\Release
-        7z a ..\..\..\..\$ARTIFACT_NAME *
-        Move-Item ..\..\..\..\$ARTIFACT_NAME $env:GITHUB_WORKSPACE
-      shell: pwsh
+      # Linux: Берем .so и кладем в папку bundle (рядом с исполняемым файлом)
+      - name: Copy SO to Build Folder (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cp target/${{ matrix.rust_target }}/release/libdr_script.so ${{ matrix.build_output_dir }}/
+        shell: bash
 
-    - name: Package Linux
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        ARTIFACT_NAME="${{ steps.set_artifact_name.outputs.artifact_name }}"
-        tar -czf "$ARTIFACT_NAME" -C dr_script_flutter/build/linux/x64/release bundle
-      shell: bash
+      # --- 6. АРХИВАЦИЯ ГОТОВОГО ПРИЛОЖЕНИЯ ---
 
-    - name: Package macOS
-      if: matrix.os == 'macos-latest'
-      run: |
-        ARTIFACT_NAME="${{ steps.set_artifact_name.outputs.artifact_name }}"
-        cd dr_script_flutter/build/macos/Build/Products/Release/
-        zip -r -9 "../../$ARTIFACT_NAME" Dr_Script_Ide.app
-        mv ../../$ARTIFACT_NAME $GITHUB_WORKSPACE/
-      shell: bash
+      - name: Compress Build (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          Compress-Archive -Path ${{ matrix.build_output_dir }}\* -DestinationPath ${{ matrix.asset_name_prefix }}${{ matrix.artifact_ext }}
+        shell: powershell
 
-    - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./${{ steps.set_artifact_name.outputs.artifact_name }}
-        asset_name: ${{ steps.set_artifact_name.outputs.artifact_name }}
-        asset_content_type: application/octet-stream
+      - name: Compress Build (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd ${{ matrix.build_output_dir }}
+          tar -czvf ../../../../../../${{ matrix.asset_name_prefix }}${{ matrix.artifact_ext }} .
+        shell: bash
+
+      - name: Compress Build (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd ${{ matrix.build_output_dir }}
+          # zip -r <куда сохранить> <что сохранить (.app)>
+          zip -r ../../../../../../${{ matrix.asset_name_prefix }}${{ matrix.artifact_ext }} dr_script_flutter.app
+        shell: bash
+
+      # --- 7. ЗАГРУЗКА РЕЛИЗА ---
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ${{ matrix.asset_name_prefix }}${{ matrix.artifact_ext }}
