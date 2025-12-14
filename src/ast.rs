@@ -34,7 +34,6 @@ pub enum ExprKind {
 #[derive(Debug, Clone)]
 pub enum StmtKind {
     Expr(Expr),
-    Print(Expr),
     VerDecl {
         name: String,
         value: Expr,

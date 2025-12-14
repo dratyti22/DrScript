@@ -2,6 +2,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
 mod ast;
+mod builtins;
 mod interpreter;
 mod lexer;
 mod parser;

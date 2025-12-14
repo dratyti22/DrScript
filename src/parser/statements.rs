@@ -65,10 +65,6 @@ impl ParserToken {
                 position: _,
             }) => self.parse_var_decl(),
             Some(TokenPosition {
-                token: Token::Print,
-                position: _,
-            }) => self.parse_print(),
-            Some(TokenPosition {
                 token: Token::Ident(_),
                 position: _,
             }) => {
@@ -141,16 +137,6 @@ impl ParserToken {
                 None,
             )),
         }
-    }
-    /// выводит значение
-    pub(super) fn parse_print(&mut self) -> TError<Stmt> {
-        self.advance(); // пропускаем print
-        self.expect(&Token::LParen)?;
-        let expr = self.parse_expr()?;
-        self.expect(&Token::RParen)?;
-        self.expect(&Token::Semicolon)?;
-        let span = expr.span.clone();
-        Ok(self.make_stmt(StmtKind::Print(expr), span))
     }
     /// по логике изменение значения переменной
     fn parse_assign(&mut self) -> TError<Stmt> {
@@ -278,12 +264,7 @@ impl ParserToken {
                 break;
             }
 
-            match token {
-                Token::Ident(name) if name == "print" => {
-                    stmts.push(self.parse_print()?);
-                }
-                _ => stmts.push(self.parse_stmt()?),
-            }
+            stmts.push(self.parse_stmt()?)
         }
         Ok(stmts)
     }

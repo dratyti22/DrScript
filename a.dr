@@ -1,8 +1,2 @@
-print("Привет, Dr Script!");
-var x = 10
-var y = 5;
-print("Сумма: " + (x + y));
-for (i=0;i<3;i++) {
-  print("Цикл " + i);
-}
-print(56);
+ver a = 89;
+print("agasd");

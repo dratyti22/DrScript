@@ -5,8 +5,6 @@ use logos::Logos;
 #[logos(skip r"[ \t\f]+")]
 #[logos(skip r"//[^\n]*")]
 pub enum Token {
-    #[token("print")]
-Print,
     #[token("var")]
     Var,
     #[token("ver")]

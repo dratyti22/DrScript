@@ -2,6 +2,7 @@ use crate::parser::ParserToken;
 use clap::Parser;
 
 mod ast;
+mod builtins;
 mod cli;
 mod interpreter;
 mod lexer;

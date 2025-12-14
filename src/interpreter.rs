@@ -1,12 +1,19 @@
 use crate::ast::{Expr, ExprKind, Stmt, StmtKind};
-use crate::type_error::RuntimeError;
-use std::collections::HashMap;
+use crate::type_error::{RuntimeError, Span};
 use crate::type_values::Type;
+use std::collections::HashMap;
 
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
+pub type BuiltinResult = Result<Type, RuntimeError>;
+#[derive(Debug, Clone)]
+pub struct BuiltinFun {
+    pub name: &'static str,
+    pub args: Option<usize>,
+    pub func: fn(Vec<Type>, &mut String, Span) -> BuiltinResult,
+}
 
 #[derive(Debug, Clone)]
-struct Value {
+pub struct Value {
     value: Type,
     mutable: bool,
 }
@@ -21,14 +28,24 @@ enum ExecReturn {
 pub struct Interpretation {
     vars: HashMap<String, Value>,
     funcs: HashMap<String, (Vec<String>, Vec<Stmt>)>,
+    builtins: HashMap<String, BuiltinFun>,
 }
 
 impl Interpretation {
     pub fn new() -> Self {
-        Self {
+        let mut i = Self {
             vars: HashMap::new(),
             funcs: HashMap::new(),
-        }
+            builtins: HashMap::new(),
+        };
+        i.register_builtin();
+        i
+    }
+    pub(super) fn register_builtin(&mut self) {
+        self.add_builtin(Self::print_builtin())
+    }
+    pub fn add_builtin(&mut self, b: BuiltinFun) {
+        self.builtins.insert(b.name.to_string(), b);
     }
 
     pub fn run(&mut self, stmts: Vec<Stmt>) -> RuntimeResult<String> {
@@ -123,7 +140,7 @@ impl Interpretation {
             } => {
                 self.run_stmt(*init, output)?;
 
-                while self.run_expr(cond.clone(), output)? != Type::Int(0){
+                while self.run_expr(cond.clone(), output)? != Type::Int(0) {
                     for stmt in body.clone() {
                         match self.run_stmt(stmt, output)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
@@ -135,12 +152,6 @@ impl Interpretation {
                         self.run_expr(e, output)?;
                     }
                 }
-                Ok(ExecReturn::None)
-            }
-
-            StmtKind::Print(expr) => {
-                let value = self.run_expr(expr, output)?;
-                output.push_str(&format!("{}\n", value));
                 Ok(ExecReturn::None)
             }
 
@@ -185,12 +196,24 @@ impl Interpretation {
                 Ok(self.run_expr(*l, output)? / rhs)
             }
 
-            ExprKind::Less(l, r) => Ok(Type::Int((self.run_expr(*l, output)? < self.run_expr(*r, output)?) as i64)),
-            ExprKind::LessEqual(l, r) => Ok(Type::Int((self.run_expr(*l, output)? <= self.run_expr(*r, output)?) as i64)),
-            ExprKind::Greater(l, r) => Ok(Type::Int((self.run_expr(*l, output)? > self.run_expr(*r, output)?) as i64)),
-            ExprKind::GreaterEqual(l, r) => Ok(Type::Int((self.run_expr(*l, output)? >= self.run_expr(*r, output)?) as i64)),
-            ExprKind::EqualEqual(l, r) => Ok(Type::Int((self.run_expr(*l, output)? == self.run_expr(*r, output)?) as i64)),
-            ExprKind::NotEqual(l, r) => Ok(Type::Int((self.run_expr(*l, output)? != self.run_expr(*r, output)?) as i64)),
+            ExprKind::Less(l, r) => Ok(Type::Int(
+                (self.run_expr(*l, output)? < self.run_expr(*r, output)?) as i64,
+            )),
+            ExprKind::LessEqual(l, r) => Ok(Type::Int(
+                (self.run_expr(*l, output)? <= self.run_expr(*r, output)?) as i64,
+            )),
+            ExprKind::Greater(l, r) => Ok(Type::Int(
+                (self.run_expr(*l, output)? > self.run_expr(*r, output)?) as i64,
+            )),
+            ExprKind::GreaterEqual(l, r) => Ok(Type::Int(
+                (self.run_expr(*l, output)? >= self.run_expr(*r, output)?) as i64,
+            )),
+            ExprKind::EqualEqual(l, r) => Ok(Type::Int(
+                (self.run_expr(*l, output)? == self.run_expr(*r, output)?) as i64,
+            )),
+            ExprKind::NotEqual(l, r) => Ok(Type::Int(
+                (self.run_expr(*l, output)? != self.run_expr(*r, output)?) as i64,
+            )),
 
             ExprKind::PreInc(name) => {
                 let v = self
@@ -241,6 +264,25 @@ impl Interpretation {
                     }
                 };
 
+                // Для системных функций
+                let mut vec_value: Vec<Type> = Vec::new();
+                for v in args.clone() {
+                    let t = self.run_expr(v, output)?;
+                    vec_value.push(t);
+                }
+                if let Some(builtin) = self.builtins.get(&name) {
+                    if let Some(arity) = builtin.args {
+                        if args.len() != arity {
+                            return Err(RuntimeError::ArgumentMismatch {
+                                expected: arity,
+                                got: vec_value.len(),
+                            });
+                        }
+                    }
+                    return (builtin.func)(vec_value, output, span);
+                }
+
+                // Для обычных функций
                 let (params, body) = self
                     .funcs
                     .get(&name)
@@ -257,6 +299,7 @@ impl Interpretation {
                 let mut local = Interpretation {
                     vars: HashMap::new(),
                     funcs: self.funcs.clone(),
+                    builtins: self.builtins.clone(),
                 };
 
                 for (param, arg_expr) in params.into_iter().zip(args.into_iter()) {
