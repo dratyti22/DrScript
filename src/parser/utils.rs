@@ -65,13 +65,7 @@ impl ParserToken {
         }
     }
 
-    /// вспомогательная функция для обратной совместимости
-    pub(super) fn expect_or_panic(&mut self, expected_token: &Token) {
-        if let Err(_) = self.expect(expected_token) {
-            panic!("Expected {:?} but got {:?}", expected_token, self.peek())
-        }
-    }
-    pub(super)    fn merge_span(&self, a: &Span, b: &Span) -> Span {
+    pub(super) fn merge_span(&self, a: &Span, b: &Span) -> Span {
         Span {
             start: a.start.clone(),
             end: b.end.clone(),

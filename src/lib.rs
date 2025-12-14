@@ -46,19 +46,12 @@ fn execute_dr_code(code: &str) -> String {
 
     let mut parser = ParserToken::new(tokens);
     let ast = match parser.parse() {
-        // !!! ИЗМЕНЕНИЕ ЗДЕСЬ !!!
-        // Вместо отладочного вывода, вызываем метод, который форматирует отчет
         Ok(ast) => ast,
         Err(e) => return e.get_report_string(),
     };
 
     let mut interpreter = Interpretation::new();
-    match interpreter.run(ast) {
-        Ok(output) => output,
-        // Ошибки выполнения также должны быть красиво отформатированы!
-        // Поскольку у вас нет метода report() для RuntimeError, пока оставим так,
-        // но в будущем нужно добавить такой же метод и для RuntimeErrors.
-        Err(e) => format!("RUNTIME ERROR: {:?}", e),
-    }
+    interpreter
+        .run(ast)
+        .unwrap_or_else(|e| format!("RUNTIME ERROR: {:?}", e))
 }
-

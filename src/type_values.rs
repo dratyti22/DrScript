@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
 
 #[derive(Debug, Clone)]
@@ -91,7 +91,7 @@ impl Mul for Type {
             (Type::Int(a), Type::Int(b)) => Type::Int(a * b),
             (Type::Str(a), Type::Int(b)) => Type::Str(a.repeat(b as usize)),
             (Type::Int(a), Type::Str(b)) => Type::Str(b.repeat(a as usize)),
-            (Type::Str(a), Type::Str(b)) => panic!("Cannot multiply strings: {} and {}", a, b)
+            (Type::Str(a), Type::Str(b)) => panic!("Cannot multiply strings: {} and {}", a, b),
         }
     }
 }

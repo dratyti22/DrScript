@@ -3,21 +3,19 @@ use clap::Parser;
 
 mod ast;
 mod cli;
-mod error_handler;
 mod interpreter;
 mod lexer;
 mod parser;
 mod type_error;
 mod type_values;
 
-use crate::type_error::{ParseError, ParseErrorKind};
 use cli::Cli;
 use interpreter::Interpretation;
 use std::panic;
 
 fn main() {
     if let Err(err) = run() {
-        err.report(); // <<< вот тут используется report()
+        err.report();
         std::process::exit(1);
     }
 }
@@ -37,7 +35,6 @@ fn run() -> Result<(), type_error::ParseError> {
 
     let mut i = Interpretation::new();
 
-    // Обработка runtime ошибок
     match i.run(ast) {
         Ok(output) => {
             for line in output.lines() {
@@ -46,14 +43,6 @@ fn run() -> Result<(), type_error::ParseError> {
 
             Ok(())
         }
-        Err(e) => {
-            let span = e.span();
-            Err(ParseError::new(
-                ParseErrorKind::Runtime(e),
-                span,
-                Some(cli.file.clone()),
-                Some(code.clone()),
-            ))
-        }
+        Err(e) => Err(e.to_parse_error(Some(cli.file.clone()), Some(code.clone()))),
     }
 }

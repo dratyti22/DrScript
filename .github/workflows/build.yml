@@ -3,7 +3,7 @@ name: Release Dr Script IDE
 on:
   push:
     branches:
-      - refactor/type_error # Тестовый триггер
+      - develop # Тестовый триггер
 
 permissions:
   contents: write

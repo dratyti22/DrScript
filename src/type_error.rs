@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::lexer::Token;
 use std::fmt;
 
@@ -17,11 +18,6 @@ pub struct TokenPosition {
 pub struct Span {
     pub start: Position,
     pub end: Position,
-}
-impl Span {
-    pub fn new(start: Position, end: Position) -> Self {
-        Self { start, end }
-    }
 }
 
 #[derive(Debug)]
@@ -47,13 +43,13 @@ impl ParseError {
         }
     }
     pub fn get_report_string(&self) -> String {
-        // Мы будем использовать стандартные символы для подчеркивания вместо крейта colored
         let mut report = String::new();
 
-        // Заголовок ошибки
-        report.push_str(&format!("ERROR: {}\n", format!("{:?}", self.kind)));
+        report.push_str(&format!(
+            "ERROR: {}\n",
+            format!("{:?}", self.kind.message())
+        ));
 
-        // Позиция ошибки
         report.push_str(&format!(
             " --> {}:{}:{}\n",
             self.file, self.span.start.line, self.span.start.column
@@ -65,17 +61,14 @@ impl ParseError {
             .nth(self.span.start.line.saturating_sub(1))
             .unwrap_or("");
 
-        // Строка с кодом
         report.push_str(&format!("\n{} | {}\n", self.span.start.line, line));
 
-        // Подчеркивание '^'
         report.push_str(&format!(
             "  | {}{}\n",
             " ".repeat(self.span.start.column.saturating_sub(1)),
-            "^" // Просто символ, без цвета
+            "^"
         ));
 
-        // Для удобства Flutter добавим маркер в начало
         format!("REPORT_START:\n{}", report)
     }
     pub fn report(&self) {
@@ -84,7 +77,7 @@ impl ParseError {
         eprintln!(
             "{}: {}",
             "error".red().bold(),
-            format!("{:?}", self.kind).bold()
+            format!("{:?}", self.kind.message()).bold()
         );
         eprintln!(
             "  --> {}:{}:{}",
@@ -156,7 +149,7 @@ pub enum FunctionError {
 // ==================== BLOCK / CONTROL FLOW ERRORS ====================
 #[derive(Debug)]
 pub enum BlockError {
-    MissingOpeningBrace,        // ожидалась { но её нет
+    MissingOpeningBrace,        // ожидалась {,  но её нет
     MissingClosingBrace,        // не закрыта }
     InvalidConditionExpression, // условие if/while неверного типа
     InvalidForInitializer,      // неправильная часть перед ";"
@@ -164,7 +157,7 @@ pub enum BlockError {
 }
 
 // ==================== RUNTIME ERRORS ====================
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RuntimeError {
     UndefinedVariable { name: String, span: Span },
     UndefinedFunction { name: String, span: Span },
@@ -181,6 +174,15 @@ impl RuntimeError {
             RuntimeError::ArgumentMismatch { .. } => Default::default(),
             RuntimeError::DivisionByZero => Default::default(),
         }
+    }
+
+    pub fn to_parse_error(&self, file: Option<String>, source: Option<String>) -> ParseError {
+        ParseError::new(
+            ParseErrorKind::Runtime(self.clone()),
+            self.span(),
+            file,
+            source,
+        )
     }
 }
 
@@ -216,4 +218,31 @@ pub enum ParseErrorKind {
     Block(BlockError),          // ошибка блоков / контрольных структур
     Runtime(RuntimeError),      // ошибка выполнения
     Custom(String),             // произвольная пользовательская ошибка
+}
+impl ParseErrorKind {
+    pub fn message(&self) -> String {
+        match self {
+            ParseErrorKind::Runtime(err) => match err {
+                RuntimeError::UndefinedVariable { name, .. } => {
+                    format!("Undefined variable `{}`", name)
+                }
+
+                RuntimeError::UndefinedFunction { name, .. } => {
+                    format!("Undefined function `{}`", name)
+                }
+
+                RuntimeError::ImmutableAssignment { name, .. } => {
+                    format!("Cannot assign to immutable variable `{}`", name)
+                }
+
+                RuntimeError::ArgumentMismatch { expected, got } => {
+                    format!("Argument mismatch: expected {}, got {}", expected, got)
+                }
+
+                RuntimeError::DivisionByZero => "Division by zero".to_string(),
+            },
+
+            other => format!("{:?}", other),
+        }
+    }
 }
