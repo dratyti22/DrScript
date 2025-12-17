@@ -164,6 +164,7 @@ pub enum RuntimeError {
     ImmutableAssignment { name: String, span: Span },
     ArgumentMismatch { expected: usize, got: usize },
     DivisionByZero,
+    IoError { name: String, span: Span },
 }
 impl RuntimeError {
     pub fn span(&self) -> Span {
@@ -171,6 +172,7 @@ impl RuntimeError {
             RuntimeError::UndefinedVariable { span, .. } => span.clone(),
             RuntimeError::UndefinedFunction { span, .. } => span.clone(),
             RuntimeError::ImmutableAssignment { span, .. } => span.clone(),
+            RuntimeError::IoError { span, .. } => span.clone(),
             RuntimeError::ArgumentMismatch { .. } => Default::default(),
             RuntimeError::DivisionByZero => Default::default(),
         }
@@ -202,6 +204,9 @@ impl fmt::Display for RuntimeError {
                 write!(f, "Argument mismatch: expected {}, got {}", expected, got)
             }
             RuntimeError::DivisionByZero => write!(f, "Division by zero"),
+            RuntimeError::IoError { name, .. } => {
+                write!(f, "no arguments were received in: {}", name)
+            }
         }
     }
 }
@@ -240,6 +245,9 @@ impl ParseErrorKind {
                 }
 
                 RuntimeError::DivisionByZero => "Division by zero".to_string(),
+                RuntimeError::IoError { name, .. } => {
+                    format!("no arguments were received in: {}", name)
+                }
             },
 
             other => format!("{:?}", other),

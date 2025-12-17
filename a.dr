@@ -1,2 +1,2 @@
-ver a = 89;
-print("agasd");
+ver a = "abc";
+print(len(a));
