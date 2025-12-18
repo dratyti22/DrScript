@@ -5,6 +5,7 @@ mod ast;
 mod builtins;
 mod cli;
 mod interpreter;
+mod io;
 mod lexer;
 mod parser;
 mod type_error;
@@ -34,16 +35,10 @@ fn run() -> Result<(), type_error::ParseError> {
         e
     })?;
 
-    let mut i = Interpretation::new();
+    let mut i = Interpretation::new(None);
 
     match i.run(ast) {
-        Ok(output) => {
-            for line in output.lines() {
-                println!("{}", line);
-            }
-
-            Ok(())
-        }
-        Err(e) => Err(e.to_parse_error(Some(cli.file.clone()), Some(code.clone()))),
+        Ok(_) => Ok(()),
+        Err(mut e) => Err(e.to_parse_error(Some(cli.file), Some(code))),
     }
 }

@@ -1,7 +1,10 @@
 use crate::ast::{Expr, ExprKind, Stmt, StmtKind};
+use crate::io::{DrScriptIo, IoTerminal};
 use crate::type_error::{RuntimeError, Span};
 use crate::type_values::Type;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
 pub type BuiltinResult = Result<Type, RuntimeError>;
@@ -9,7 +12,7 @@ pub type BuiltinResult = Result<Type, RuntimeError>;
 pub struct BuiltinFun {
     pub name: &'static str,
     pub args: Option<usize>,
-    pub func: fn(Vec<Type>, &mut String, Span) -> BuiltinResult,
+    pub func: fn(Vec<Type>, &mut dyn DrScriptIo, Span) -> BuiltinResult,
 }
 
 #[derive(Debug, Clone)]
@@ -24,19 +27,21 @@ enum ExecReturn {
     None,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Interpretation {
     vars: HashMap<String, Value>,
     funcs: HashMap<String, (Vec<String>, Vec<Stmt>)>,
     builtins: HashMap<String, BuiltinFun>,
+    io: Rc<RefCell<dyn DrScriptIo>>,
 }
 
 impl Interpretation {
-    pub fn new() -> Self {
+    pub fn new(io: Option<Rc<RefCell<dyn DrScriptIo>>>) -> Self {
         let mut i = Self {
             vars: HashMap::new(),
             funcs: HashMap::new(),
             builtins: HashMap::new(),
+            io: io.unwrap_or(Rc::new(RefCell::new(IoTerminal))),
         };
         i.register_builtin();
         i
@@ -44,25 +49,23 @@ impl Interpretation {
     pub(super) fn register_builtin(&mut self) {
         self.add_builtin(Self::print_builtin());
         self.add_builtin(Self::len_builtin());
+        self.add_builtin(Self::input_builtin());
     }
     pub fn add_builtin(&mut self, b: BuiltinFun) {
         self.builtins.insert(b.name.to_string(), b);
     }
-
-    pub fn run(&mut self, stmts: Vec<Stmt>) -> RuntimeResult<String> {
-        let mut output = String::new();
-
+    pub fn run(&mut self, stmts: Vec<Stmt>) -> RuntimeResult<()> {
         for stmt in stmts {
-            match self.run_stmt(stmt, &mut output)? {
+            match self.run_stmt(stmt)? {
                 ExecReturn::Return(_) => break,
                 ExecReturn::None => {}
             }
         }
 
-        Ok(output)
+        Ok(())
     }
 
-    fn run_stmt(&mut self, stmt: Stmt, output: &mut String) -> RuntimeResult<ExecReturn> {
+    fn run_stmt(&mut self, stmt: Stmt) -> RuntimeResult<ExecReturn> {
         let span = stmt.span.clone();
         match stmt.kind {
             StmtKind::VerDecl {
@@ -70,13 +73,13 @@ impl Interpretation {
                 value,
                 mutable,
             } => {
-                let v = self.run_expr(value, output)?;
+                let v = self.run_expr(value)?;
                 self.vars.insert(name, Value { value: v, mutable });
                 Ok(ExecReturn::None)
             }
 
             StmtKind::Assign { name, value } => {
-                let new_val = self.run_expr(value, output)?;
+                let new_val = self.run_expr(value)?;
 
                 match self.vars.get_mut(&name) {
                     Some(v) => {
@@ -103,16 +106,16 @@ impl Interpretation {
                 then_branch,
                 else_branch,
             } => {
-                if self.run_expr(cond, output)? != Type::Int(0) {
+                if self.run_expr(cond)? != Type::Int(0) {
                     for stmt in then_branch {
-                        match self.run_stmt(stmt, output)? {
+                        match self.run_stmt(stmt)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
                     }
                 } else if let Some(branch) = else_branch {
                     for stmt in branch {
-                        match self.run_stmt(stmt, output)? {
+                        match self.run_stmt(stmt)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
@@ -122,9 +125,9 @@ impl Interpretation {
             }
 
             StmtKind::While { cond, body } => {
-                while self.run_expr(cond.clone(), output)? != Type::Int(0) {
+                while self.run_expr(cond.clone())? != Type::Int(0) {
                     for stmt in body.clone() {
-                        match self.run_stmt(stmt, output)? {
+                        match self.run_stmt(stmt)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
@@ -139,25 +142,25 @@ impl Interpretation {
                 incr,
                 body,
             } => {
-                self.run_stmt(*init, output)?;
+                self.run_stmt(*init)?;
 
-                while self.run_expr(cond.clone(), output)? != Type::Int(0) {
+                while self.run_expr(cond.clone())? != Type::Int(0) {
                     for stmt in body.clone() {
-                        match self.run_stmt(stmt, output)? {
+                        match self.run_stmt(stmt)? {
                             ExecReturn::Return(v) => return Ok(ExecReturn::Return(v)),
                             ExecReturn::None => {}
                         }
                     }
 
                     if let Some(e) = incr.clone() {
-                        self.run_expr(e, output)?;
+                        self.run_expr(e)?;
                     }
                 }
                 Ok(ExecReturn::None)
             }
 
             StmtKind::Expr(expr) => {
-                self.run_expr(expr, output)?;
+                self.run_expr(expr)?;
                 Ok(ExecReturn::None)
             }
 
@@ -167,13 +170,13 @@ impl Interpretation {
             }
 
             StmtKind::Return(expr) => {
-                let value = self.run_expr(expr, output)?;
+                let value = self.run_expr(expr)?;
                 Ok(ExecReturn::Return(value))
             }
         }
     }
 
-    fn run_expr(&mut self, expr: Expr, output: &mut String) -> RuntimeResult<Type> {
+    fn run_expr(&mut self, expr: Expr) -> RuntimeResult<Type> {
         let span = expr.span.clone();
         match expr.kind {
             ExprKind::Num(n) => Ok(Type::Int(n)),
@@ -185,36 +188,34 @@ impl Interpretation {
                 .map(|v| v.value.clone())
                 .ok_or(RuntimeError::UndefinedVariable { name, span }),
 
-            ExprKind::Plus(l, r) => Ok(self.run_expr(*l, output)? + self.run_expr(*r, output)?),
-            ExprKind::Minus(l, r) => Ok(self.run_expr(*l, output)? - self.run_expr(*r, output)?),
-            ExprKind::Star(l, r) => Ok(self.run_expr(*l, output)? * self.run_expr(*r, output)?),
+            ExprKind::Plus(l, r) => Ok(self.run_expr(*l)? + self.run_expr(*r)?),
+            ExprKind::Minus(l, r) => Ok(self.run_expr(*l)? - self.run_expr(*r)?),
+            ExprKind::Star(l, r) => Ok(self.run_expr(*l)? * self.run_expr(*r)?),
 
             ExprKind::Slash(l, r) => {
-                let rhs = self.run_expr(*r, output)?;
+                let rhs = self.run_expr(*r)?;
                 if rhs.is_zero() {
                     return Err(RuntimeError::DivisionByZero);
                 }
-                Ok(self.run_expr(*l, output)? / rhs)
+                Ok(self.run_expr(*l)? / rhs)
             }
 
-            ExprKind::Less(l, r) => Ok(Type::Int(
-                (self.run_expr(*l, output)? < self.run_expr(*r, output)?) as i64,
-            )),
-            ExprKind::LessEqual(l, r) => Ok(Type::Int(
-                (self.run_expr(*l, output)? <= self.run_expr(*r, output)?) as i64,
-            )),
-            ExprKind::Greater(l, r) => Ok(Type::Int(
-                (self.run_expr(*l, output)? > self.run_expr(*r, output)?) as i64,
-            )),
-            ExprKind::GreaterEqual(l, r) => Ok(Type::Int(
-                (self.run_expr(*l, output)? >= self.run_expr(*r, output)?) as i64,
-            )),
-            ExprKind::EqualEqual(l, r) => Ok(Type::Int(
-                (self.run_expr(*l, output)? == self.run_expr(*r, output)?) as i64,
-            )),
-            ExprKind::NotEqual(l, r) => Ok(Type::Int(
-                (self.run_expr(*l, output)? != self.run_expr(*r, output)?) as i64,
-            )),
+            ExprKind::Less(l, r) => Ok(Type::Int((self.run_expr(*l)? < self.run_expr(*r)?) as i64)),
+            ExprKind::LessEqual(l, r) => {
+                Ok(Type::Int((self.run_expr(*l)? <= self.run_expr(*r)?) as i64))
+            }
+            ExprKind::Greater(l, r) => {
+                Ok(Type::Int((self.run_expr(*l)? > self.run_expr(*r)?) as i64))
+            }
+            ExprKind::GreaterEqual(l, r) => {
+                Ok(Type::Int((self.run_expr(*l)? >= self.run_expr(*r)?) as i64))
+            }
+            ExprKind::EqualEqual(l, r) => {
+                Ok(Type::Int((self.run_expr(*l)? == self.run_expr(*r)?) as i64))
+            }
+            ExprKind::NotEqual(l, r) => {
+                Ok(Type::Int((self.run_expr(*l)? != self.run_expr(*r)?) as i64))
+            }
 
             ExprKind::PreInc(name) => {
                 let v = self
@@ -268,7 +269,7 @@ impl Interpretation {
                 // Для системных функций
                 let mut vec_value: Vec<Type> = Vec::new();
                 for v in args.clone() {
-                    let t = self.run_expr(v, output)?;
+                    let t = self.run_expr(v)?;
                     vec_value.push(t);
                 }
                 if let Some(builtin) = self.builtins.get(&name) {
@@ -280,7 +281,7 @@ impl Interpretation {
                             });
                         }
                     }
-                    return (builtin.func)(vec_value, output, span);
+                    return (builtin.func)(vec_value, &mut *self.io.borrow_mut(), span);
                 }
 
                 // Для обычных функций
@@ -301,20 +302,21 @@ impl Interpretation {
                     vars: HashMap::new(),
                     funcs: self.funcs.clone(),
                     builtins: self.builtins.clone(),
+                    io: self.io.clone(),
                 };
 
                 for (param, arg_expr) in params.into_iter().zip(args.into_iter()) {
                     local.vars.insert(
                         param,
                         Value {
-                            value: self.run_expr(arg_expr, output)?,
+                            value: self.run_expr(arg_expr)?,
                             mutable: false,
                         },
                     );
                 }
 
                 for stmt in body {
-                    match local.run_stmt(stmt, output)? {
+                    match local.run_stmt(stmt)? {
                         ExecReturn::Return(v) => return Ok(v),
                         ExecReturn::None => {}
                     }

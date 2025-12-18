@@ -1,2 +1,5 @@
 ver a = "abc";
 print(len(a));
+
+ver y = input("HELP: ");
+print(y);

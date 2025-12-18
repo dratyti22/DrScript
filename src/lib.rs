@@ -4,6 +4,7 @@ use std::os::raw::c_char;
 mod ast;
 mod builtins;
 mod interpreter;
+mod io;
 mod lexer;
 mod parser;
 mod type_error;
@@ -50,9 +51,9 @@ fn execute_dr_code(code: &str) -> String {
         Ok(ast) => ast,
         Err(e) => return e.get_report_string(),
     };
+    "lsj".to_string()
 
-    let mut interpreter = Interpretation::new();
-    interpreter
-        .run(ast)
-        .unwrap_or_else(|e| format!("RUNTIME ERROR: {:?}", e))
+    // let mut interpreter = Interpretation::new(None);
+    // interpreter
+    //     .run(ast).map_err(|e| e.get_report_string()).unwrap_or_else(|e| format!("Error: {}", e))
 }

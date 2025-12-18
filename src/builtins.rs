@@ -1,18 +1,16 @@
 use crate::interpreter::{BuiltinFun, Interpretation};
 use crate::type_error::RuntimeError;
 use crate::type_values::Type;
-use std::io;
-use std::io::Write;
 impl Interpretation {
     pub(super) fn print_builtin() -> BuiltinFun {
         BuiltinFun {
             name: "print",
             args: None,
-            func: |value, output, _span| {
+            func: |value, io, _span| {
                 for v in value {
-                    output.push_str(&v.to_string());
+                    io.print(&v.to_string());
                 }
-                output.push('\n');
+                io.print("\n");
                 Ok(Type::Int(0))
             },
         }
@@ -22,7 +20,7 @@ impl Interpretation {
         BuiltinFun {
             name: "len",
             args: Some(1),
-            func: |args, _output, span| {
+            func: |args, io, span| {
                 let arg = match &args[0] {
                     Type::Str(s) => s,
                     _ => {
@@ -34,6 +32,31 @@ impl Interpretation {
                 };
                 let l = arg.len();
                 Ok(Type::Int(l as i64))
+            },
+        }
+    }
+
+    pub(super) fn input_builtin() -> BuiltinFun {
+        BuiltinFun {
+            name: "input",
+            args: None,
+            func: |args_t, io, span| {
+                let prompt = match args_t.as_slice() {
+                    [] => "",
+                    [Type::Str(s)] => s,
+                    _ => {
+                        return Err(RuntimeError::ArgumentMismatch {
+                            expected: 1,
+                            got: args_t.len(),
+                        });
+                    }
+                };
+                let result = io.input(prompt).map_err(|_| RuntimeError::IoError {
+                    name: "input".to_string(),
+                    span,
+                })?;
+
+                Ok(Type::Str(result))
             },
         }
     }
