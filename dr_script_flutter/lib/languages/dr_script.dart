@@ -15,7 +15,7 @@ final drScript = Mode(
   keywords: {
     'keyword': 'fun ver var if else while for return',
     'literal': 'true false',
-    'built_in': 'print',
+    'built_in': 'print len input',
   },
   contains: [
     // 1. ПУНКТУАЦИЯ (Выделение структурных символов)

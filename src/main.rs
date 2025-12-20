@@ -4,6 +4,7 @@ use clap::Parser;
 mod ast;
 mod builtins;
 mod cli;
+mod ffi_io;
 mod interpreter;
 mod io;
 mod lexer;

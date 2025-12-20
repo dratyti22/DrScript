@@ -1,8 +1,12 @@
+use crate::ffi_io::{InputCallback, IoFlutter, PrintCallback};
+use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::rc::Rc;
 
 mod ast;
 mod builtins;
+mod ffi_io;
 mod interpreter;
 mod io;
 mod lexer;
@@ -11,27 +15,36 @@ mod type_error;
 mod type_values;
 
 use crate::interpreter::Interpretation;
+use crate::io::DrScriptIo;
 use crate::lexer::lex;
 use crate::parser::ParserToken;
 
+
+
+
 #[unsafe(no_mangle)]
-pub extern "C" fn run_dr_script(code: *const c_char) -> *mut c_char {
+pub extern "C" fn run_dr_script(
+    code: *const c_char,
+    print_c: PrintCallback,
+    input_c: InputCallback,
+) {
     if code.is_null() {
-        return std::ptr::null_mut();
+        return;
     }
 
     let c_str = unsafe { CStr::from_ptr(code) };
     let rust_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(_) => return std::ptr::null_mut(),
+        Ok(s) => s.to_string(),
+        Err(_) => {
+            let e = CString::new("Error: Invalid UTF-8 code").unwrap();
+            (print_c)(e.as_ptr());
+            return;
+        }
     };
 
-    let result = execute_dr_code(rust_str);
-
-    match CString::new(result) {
-        Ok(c_string) => c_string.into_raw(),
-        Err(_) => std::ptr::null_mut(),
-    }
+    let flutter_io = IoFlutter::new(print_c, input_c);
+    let io_ref = Rc::new(RefCell::new(flutter_io));
+    execute_dr_code(&rust_str, io_ref);
 }
 
 #[unsafe(no_mangle)]
@@ -43,17 +56,20 @@ pub extern "C" fn free_dr_string(ptr: *mut c_char) {
     }
 }
 
-fn execute_dr_code(code: &str) -> String {
+fn execute_dr_code(code: &str, io: Rc<RefCell<dyn DrScriptIo>>) {
     let tokens = lex(code);
-
     let mut parser = ParserToken::new(tokens);
+
     let ast = match parser.parse() {
         Ok(ast) => ast,
-        Err(e) => return e.get_report_string(),
+        Err(e) => {
+            io.borrow_mut().print(&format!("Parse Error: {}", e));
+            return;
+        }
     };
-    "lsj".to_string()
 
-    // let mut interpreter = Interpretation::new(None);
-    // interpreter
-    //     .run(ast).map_err(|e| e.get_report_string()).unwrap_or_else(|e| format!("Error: {}", e))
+    let mut interpreter = Interpretation::new(Some(io.clone()));
+    if let Err(e) = interpreter.run(ast) {
+        io.borrow_mut().print(&format!("Runtime Error: {:?}", e));
+    }
 }
