@@ -2,7 +2,7 @@
 use crate::lexer::Token;
 use std::fmt;
 
-pub type TError<T> = Result<T, ParseError>;
+pub type TError<T> = Result<T, Box<ParseError>>;
 #[derive(Clone, Debug, Default)]
 pub struct Position {
     pub line: usize,
@@ -45,10 +45,7 @@ impl ParseError {
     pub fn get_report_string(&self) -> String {
         let mut report = String::new();
 
-        report.push_str(&format!(
-            "ERROR: {}\n",
-            format!("{:?}", self.kind.message())
-        ));
+        report.push_str(&format!("ERROR: {:?}\n", self.kind.message()));
 
         report.push_str(&format!(
             " --> {}:{}:{}\n",
@@ -74,11 +71,7 @@ impl ParseError {
     pub fn report(&self) {
         use colored::*;
 
-        eprintln!(
-            "{}: {}",
-            "error".red().bold(),
-            format!("{:?}", self.kind.message()).bold()
-        );
+        eprintln!("{}: {:?}", "error".red().bold(), self.kind.message().bold());
         eprintln!(
             "  --> {}:{}:{}",
             self.file, self.span.start.line, self.span.start.column

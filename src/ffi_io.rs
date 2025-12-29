@@ -1,6 +1,6 @@
 use crate::io::DrScriptIo;
 use lazy_static::lazy_static;
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::sync::{Condvar, Mutex};
 
 lazy_static! {
@@ -20,9 +20,12 @@ pub extern "C" fn submit_input(text: *const c_char) {
     cvar.notify_one();
 }
 
+#[allow(dead_code)]
 pub type PrintCallback = extern "C" fn(*const c_char);
+#[allow(dead_code)]
 pub type InputCallback = extern "C" fn(*const c_char);
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct IoFlutter {
     print_c: PrintCallback,
@@ -30,6 +33,7 @@ pub struct IoFlutter {
 }
 
 impl IoFlutter {
+    #[allow(dead_code)]
     pub fn new(print_c: PrintCallback, input_c: InputCallback) -> Self {
         Self { print_c, input_c }
     }
@@ -47,19 +51,21 @@ impl DrScriptIo for IoFlutter {
         (self.input_c)(c_prompt.as_ptr());
 
         let (lock, cvar) = &*INPUT_CHANELL;
-        
+
         // Polling с таймаутом вместо бесконечного ожидания
         loop {
             let mut input_val = lock.lock().unwrap();
-            
+
             if let Some(value) = input_val.take() {
                 return Ok(value);
             }
-            
+
             // Ждем 50ms и проверяем снова
-            let result = cvar.wait_timeout(input_val, std::time::Duration::from_millis(50)).unwrap();
+            let result = cvar
+                .wait_timeout(input_val, std::time::Duration::from_millis(50))
+                .unwrap();
             input_val = result.0;
-            
+
             if let Some(value) = input_val.take() {
                 return Ok(value);
             }

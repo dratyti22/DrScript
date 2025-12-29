@@ -16,7 +16,7 @@ impl ParserToken {
                 token: Token::Ident(name),
                 position,
             }) => Ok((name, position)),
-            Some(TokenPosition { token, position }) => Err(ParseError::new(
+            Some(TokenPosition { token, position }) => Err(Box::new(ParseError::new(
                 ParseErrorKind::Tokens(TokensError::ExpectedToken(
                     Token::Ident(String::new()),
                     token,
@@ -24,13 +24,13 @@ impl ParserToken {
                 position,
                 None,
                 None,
-            )),
-            None => Err(ParseError::new(
+            ))),
+            None => Err(Box::new(ParseError::new(
                 ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
                 Span::default(),
                 None,
                 None,
-            )),
+            ))),
         }
     }
     /// проверка того что приходит на вход
@@ -78,18 +78,18 @@ impl ParserToken {
                 }
             }
 
-            Some(TokenPosition { token, position }) => Err(ParseError::new(
+            Some(TokenPosition { token, position }) => Err(Box::new(ParseError::new(
                 ParseErrorKind::Tokens(TokensError::UnexpectedToken(token.clone())),
                 position.clone(),
                 None,
                 None,
-            )),
-            None => Err(ParseError::new(
+            ))),
+            None => Err(Box::new(ParseError::new(
                 ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
                 Span::default(),
                 None,
                 None,
-            )),
+            ))),
         }
     }
     /// парсинг переменной
@@ -124,18 +124,18 @@ impl ParserToken {
                     span,
                 ))
             }
-            Some(TokenPosition { token, position }) => Err(ParseError::new(
+            Some(TokenPosition { token, position }) => Err(Box::new(ParseError::new(
                 ParseErrorKind::Tokens(TokensError::UnexpectedToken(token)),
                 position,
                 None,
                 None,
-            )),
-            _ => Err(ParseError::new(
+            ))),
+            _ => Err(Box::new(ParseError::new(
                 ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
                 Span::default(),
                 None,
                 None,
-            )),
+            ))),
         }
     }
     /// по логике изменение значения переменной

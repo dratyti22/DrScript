@@ -20,7 +20,7 @@ impl Interpretation {
         BuiltinFun {
             name: "len",
             args: Some(1),
-            func: |args, io, span| {
+            func: |args, _io, span| {
                 let arg = match &args[0] {
                     Type::Str(s) => s,
                     _ => {

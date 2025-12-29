@@ -23,7 +23,7 @@ fn main() {
     }
 }
 
-fn run() -> Result<(), type_error::ParseError> {
+fn run() -> Result<(), Box<type_error::ParseError>> {
     let cli = Cli::parse();
     let code = std::fs::read_to_string(&cli.file)
         .unwrap_or_else(|_| panic!("File {} not found", cli.file));
@@ -33,13 +33,13 @@ fn run() -> Result<(), type_error::ParseError> {
     let ast = parser.parse().map_err(|mut e| {
         e.file = cli.file.clone();
         e.source = code.clone();
-        e
+        *e
     })?;
 
     let mut i = Interpretation::new(None);
 
     match i.run(ast) {
         Ok(_) => Ok(()),
-        Err(mut e) => Err(e.to_parse_error(Some(cli.file), Some(code))),
+        Err(e) => Err(Box::new(e.to_parse_error(Some(cli.file), Some(code)))),
     }
 }

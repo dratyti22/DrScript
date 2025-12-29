@@ -19,11 +19,9 @@ use crate::io::DrScriptIo;
 use crate::lexer::lex;
 use crate::parser::ParserToken;
 
-
-
-
+/// # Safety
 #[unsafe(no_mangle)]
-pub extern "C" fn run_dr_script(
+pub unsafe extern "C" fn run_dr_script(
     code: *const c_char,
     print_c: PrintCallback,
     input_c: InputCallback,
@@ -46,9 +44,9 @@ pub extern "C" fn run_dr_script(
     let io_ref = Rc::new(RefCell::new(flutter_io));
     execute_dr_code(&rust_str, io_ref);
 }
-
+/// # Safety
 #[unsafe(no_mangle)]
-pub extern "C" fn free_dr_string(ptr: *mut c_char) {
+pub unsafe extern "C" fn free_dr_string(ptr: *mut c_char) {
     if !ptr.is_null() {
         unsafe {
             let _ = CString::from_raw(ptr);

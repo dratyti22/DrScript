@@ -37,7 +37,7 @@ impl ParserToken {
         if !self.match_token(expected_token) {
             let current = self.peek();
             match current {
-                Some(TokenPosition { token, position }) => Err(ParseError::new(
+                Some(TokenPosition { token, position }) => Err(Box::new(ParseError::new(
                     ParseErrorKind::Tokens(TokensError::ExpectedToken(
                         expected_token.clone(),
                         token.clone(),
@@ -45,22 +45,22 @@ impl ParserToken {
                     position.clone(),
                     None,
                     None,
-                )),
-                None => Err(ParseError::new(
+                ))),
+                None => Err(Box::new(ParseError::new(
                     ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
                     Span::default(),
                     None,
                     None,
-                )),
+                ))),
             }
         } else {
             self.advance().ok_or_else(|| {
-                ParseError::new(
+                Box::new(ParseError::new(
                     ParseErrorKind::Tokens(TokensError::UnexpectedEOF),
                     Span::default(),
                     None,
                     None,
-                )
+                ))
             })
         }
     }

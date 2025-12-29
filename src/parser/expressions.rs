@@ -124,7 +124,7 @@ impl ParserToken {
                             let span = self.merge_span(&position, &expr.span);
                             Ok(self.make_expr(ExprKind::PreInc(name), span))
                         }
-                        _ => Err(ParseError::new(
+                        _ => Err(Box::new(ParseError::new(
                             ParseErrorKind::ExprError(ExpressionError::InvalidPrefixOperator(
                                 "Префикс ++ только для переменных".to_string(),
                             )),
@@ -134,7 +134,7 @@ impl ParserToken {
                             },
                             None,
                             None,
-                        )),
+                        ))),
                     };
                 }
                 Token::MinusMinus => {
@@ -145,7 +145,7 @@ impl ParserToken {
                             let span = self.merge_span(&position, &expr.span);
                             Ok(self.make_expr(ExprKind::PreDec(name), span))
                         }
-                        _ => Err(ParseError::new(
+                        _ => Err(Box::new(ParseError::new(
                             ParseErrorKind::ExprError(ExpressionError::InvalidPrefixOperator(
                                 "Префикс -- только для переменных".to_string(),
                             )),
@@ -155,7 +155,7 @@ impl ParserToken {
                             },
                             None,
                             None,
-                        )),
+                        ))),
                     };
                 }
                 _ => {}
@@ -179,7 +179,7 @@ impl ParserToken {
                             expr = self.make_expr(ExprKind::PostInc(name.clone()), span);
                         }
                         _ => {
-                            return Err(ParseError::new(
+                            return Err(Box::new(ParseError::new(
                                 ParseErrorKind::ExprError(ExpressionError::InvalidPostfixOperator(
                                     "Постфикс ++ можно применять только к переменным".to_string(),
                                 )),
@@ -189,7 +189,7 @@ impl ParserToken {
                                 },
                                 None,
                                 None,
-                            ));
+                            )));
                         }
                     }
                 }
@@ -204,7 +204,7 @@ impl ParserToken {
                             expr = self.make_expr(ExprKind::PostDec(name.clone()), span);
                         }
                         _ => {
-                            return Err(ParseError::new(
+                            return Err(Box::new(ParseError::new(
                                 ParseErrorKind::ExprError(ExpressionError::InvalidPostfixOperator(
                                     "Постфикс -- можно применять только к переменным".to_string(),
                                 )),
@@ -214,7 +214,7 @@ impl ParserToken {
                                 },
                                 None,
                                 None,
-                            ));
+                            )));
                         }
                     }
                 }
@@ -232,10 +232,10 @@ impl ParserToken {
                 token: Token::Number(n),
                 position,
             }) => Ok(self.make_expr(ExprKind::Num(n), position)),
-            Some(TokenPosition{
+            Some(TokenPosition {
                 token: Token::Str(s),
-                position
-                 }) => Ok(self.make_expr(ExprKind::Str(s), position)),
+                position,
+            }) => Ok(self.make_expr(ExprKind::Str(s), position)),
             Some(TokenPosition {
                 token: Token::Ident(name),
                 position,
@@ -274,7 +274,7 @@ impl ParserToken {
                 Ok(self.make_expr(expr.kind, span))
             }
 
-            Some(TokenPosition { token, position }) => Err(ParseError::new(
+            Some(TokenPosition { token, position }) => Err(Box::new(ParseError::new(
                 ParseErrorKind::ExprError(ExpressionError::InvalidPrimary(token)),
                 Span {
                     start: position.start,
@@ -282,8 +282,8 @@ impl ParserToken {
                 },
                 None,
                 None,
-            )),
-            None => Err(ParseError::new(
+            ))),
+            None => Err(Box::new(ParseError::new(
                 ParseErrorKind::Tokens(crate::type_error::TokensError::UnexpectedEOF),
                 Span {
                     start: crate::type_error::Position { line: 0, column: 0 },
@@ -291,7 +291,7 @@ impl ParserToken {
                 },
                 None,
                 None,
-            )),
+            ))),
         }
     }
 }

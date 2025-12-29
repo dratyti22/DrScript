@@ -273,14 +273,15 @@ impl Interpretation {
                     vec_value.push(t);
                 }
                 if let Some(builtin) = self.builtins.get(&name) {
-                    if let Some(arity) = builtin.args {
-                        if args.len() != arity {
-                            return Err(RuntimeError::ArgumentMismatch {
-                                expected: arity,
-                                got: vec_value.len(),
-                            });
-                        }
+                    if let Some(arity) = builtin.args
+                        && args.len() != arity
+                    {
+                        return Err(RuntimeError::ArgumentMismatch {
+                            expected: arity,
+                            got: vec_value.len(),
+                        });
                     }
+
                     return (builtin.func)(vec_value, &mut *self.io.borrow_mut(), span);
                 }
 
