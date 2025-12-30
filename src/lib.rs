@@ -5,8 +5,8 @@ use std::os::raw::c_char;
 use std::rc::Rc;
 
 mod ast;
-mod builtins;
 mod ffi_io;
+mod functions;
 mod interpreter;
 mod io;
 mod lexer;

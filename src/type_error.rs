@@ -158,12 +158,32 @@ pub enum BlockError {
 // ==================== RUNTIME ERRORS ====================
 #[derive(Debug, Clone)]
 pub enum RuntimeError {
-    UndefinedVariable { name: String, span: Span },
-    UndefinedFunction { name: String, span: Span },
-    ImmutableAssignment { name: String, span: Span },
-    ArgumentMismatch { expected: usize, got: usize },
+    UndefinedVariable {
+        name: String,
+        span: Span,
+    },
+    UndefinedFunction {
+        name: String,
+        span: Span,
+    },
+    ImmutableAssignment {
+        name: String,
+        span: Span,
+    },
+    ArgumentMismatch {
+        expected: usize,
+        got: usize,
+    },
     DivisionByZero,
-    IoError { name: String, span: Span },
+    IoError {
+        name: String,
+        span: Span,
+    },
+    IoErrorMassage {
+        name: String,
+        span: Span,
+        message: String,
+    },
 }
 impl RuntimeError {
     pub fn span(&self) -> Span {
@@ -174,6 +194,7 @@ impl RuntimeError {
             RuntimeError::IoError { span, .. } => span.clone(),
             RuntimeError::ArgumentMismatch { .. } => Default::default(),
             RuntimeError::DivisionByZero => Default::default(),
+            RuntimeError::IoErrorMassage { span, .. } => span.clone(),
         }
     }
 
@@ -205,6 +226,9 @@ impl fmt::Display for RuntimeError {
             RuntimeError::DivisionByZero => write!(f, "Division by zero"),
             RuntimeError::IoError { name, .. } => {
                 write!(f, "no arguments were received in: {}", name)
+            }
+            RuntimeError::IoErrorMassage { name, message, .. } => {
+                write!(f, "no arguments were received in: {} {}", name, message)
             }
         }
     }
@@ -246,6 +270,9 @@ impl ParseErrorKind {
                 RuntimeError::DivisionByZero => "Division by zero".to_string(),
                 RuntimeError::IoError { name, .. } => {
                     format!("no arguments were received in: {}", name)
+                }
+                RuntimeError::IoErrorMassage { name, message, .. } => {
+                    format!("in the: {} error: {}", name, message)
                 }
             },
 

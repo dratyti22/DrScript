@@ -11,6 +11,14 @@ impl Type {
     pub fn is_zero(&self) -> bool {
         matches!(self, Type::Int(0))
     }
+    pub fn as_int(&self) -> Result<i64, String> {
+        match self {
+            Type::Int(n) => Ok(*n),
+            Type::Str(s) => Ok(s
+                .parse::<i64>()
+                .map_err(|_| "Cannot convert string to int".to_string())?),
+        }
+    }
 }
 
 impl Display for Type {

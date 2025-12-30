@@ -2,9 +2,9 @@ use crate::parser::ParserToken;
 use clap::Parser;
 
 mod ast;
-mod builtins;
 mod cli;
 mod ffi_io;
+mod functions;
 mod interpreter;
 mod io;
 mod lexer;

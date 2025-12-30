@@ -46,11 +46,7 @@ impl Interpretation {
         i.register_builtin();
         i
     }
-    pub(super) fn register_builtin(&mut self) {
-        self.add_builtin(Self::print_builtin());
-        self.add_builtin(Self::len_builtin());
-        self.add_builtin(Self::input_builtin());
-    }
+
     pub fn add_builtin(&mut self, b: BuiltinFun) {
         self.builtins.insert(b.name.to_string(), b);
     }

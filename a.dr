@@ -1,5 +1,3 @@
-ver a = "abc";
+ver a ="привет";
+print(chars(a));
 print(len(a));
-
-ver y = input("HELP: ");
-print(y);
