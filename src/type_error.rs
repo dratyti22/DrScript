@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use crate::lexer::Token;
 use std::fmt;
+use std::fmt::Formatter;
 
 pub type TError<T> = Result<T, Box<ParseError>>;
 #[derive(Clone, Debug, Default)]
@@ -8,19 +9,28 @@ pub struct Position {
     pub line: usize,
     pub column: usize,
 }
-
-#[derive(Clone, Debug)]
-pub struct TokenPosition {
-    pub token: Token,
-    pub position: Span,
+impl std::fmt::Display for Position {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.line, self.column)
+    }
 }
 #[derive(Clone, Debug, Default)]
 pub struct Span {
     pub start: Position,
     pub end: Position,
 }
+impl std::fmt::Display for Span {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.start, self.end)
+    }
+}
+#[derive(Clone, Debug)]
+pub struct TokenPosition {
+    pub token: Token,
+    pub position: Span,
+}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParseError {
     pub kind: ParseErrorKind,
     pub span: Span,
@@ -99,7 +109,7 @@ impl fmt::Display for ParseError {
 }
 
 // ==================== LEXER ERRORS ====================
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LexerError {
     InvalidCharacter(char), // встретился символ, которого язык не знает
     UnterminatedString,     // строка началась, но не закрылась "
@@ -107,7 +117,7 @@ pub enum LexerError {
 }
 
 // ==================== TOKEN ERRORS ====================
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TokensError {
     ExpectedToken(Token, Token), // ожидался один токен, но пришёл другой
     UnexpectedToken(Token),      // получен токен, который здесь недопустим
@@ -115,7 +125,7 @@ pub enum TokensError {
 }
 
 // ==================== VARIABLE / IDENTIFIER ERRORS ====================
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VariableError {
     ExpectedIdentifier,                    // ожидалось имя переменной
     AssignmentToImmutableVariable(String), // попытка изменить let-переменную
@@ -123,7 +133,7 @@ pub enum VariableError {
 }
 
 // ==================== EXPRESSION ERRORS ====================
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpressionError {
     InvalidPrimary(Token), // ожидалось первичное выражение: число, идентификатор, скобки
     UnexpectedOperator(String), // встретился оператор, который здесь недопустим
@@ -134,7 +144,7 @@ pub enum ExpressionError {
 }
 
 // ==================== FUNCTION ERRORS ====================
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FunctionError {
     ExpectedFunctionName,           // после fn ожидалось имя функции
     ExpectedParameterName,          // параметр без имени
@@ -146,7 +156,7 @@ pub enum FunctionError {
 }
 
 // ==================== BLOCK / CONTROL FLOW ERRORS ====================
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BlockError {
     MissingOpeningBrace,        // ожидалась {,  но её нет
     MissingClosingBrace,        // не закрыта }
@@ -184,6 +194,11 @@ pub enum RuntimeError {
         span: Span,
         message: String,
     },
+    ImportNotFount {
+        name: String,
+        span: Span,
+    },
+    Parse(Box<ParseError>),
 }
 impl RuntimeError {
     pub fn span(&self) -> Span {
@@ -195,6 +210,8 @@ impl RuntimeError {
             RuntimeError::ArgumentMismatch { .. } => Default::default(),
             RuntimeError::DivisionByZero => Default::default(),
             RuntimeError::IoErrorMassage { span, .. } => span.clone(),
+            RuntimeError::ImportNotFount { span, .. } => span.clone(),
+            RuntimeError::Parse(_) => Default::default(),
         }
     }
 
@@ -205,6 +222,12 @@ impl RuntimeError {
             file,
             source,
         )
+    }
+}
+
+impl From<ParseError> for RuntimeError {
+    fn from(value: ParseError) -> Self {
+        Self::Parse(Box::new(value))
     }
 }
 
@@ -230,13 +253,17 @@ impl fmt::Display for RuntimeError {
             RuntimeError::IoErrorMassage { name, message, .. } => {
                 write!(f, "no arguments were received in: {} {}", name, message)
             }
+            RuntimeError::ImportNotFount { name, .. } => {
+                write!(f, "File named {} not found", name)
+            }
+            RuntimeError::Parse(kind) => write!(f, "{:?}", kind),
         }
     }
 }
 
 // ==================== TOP-LEVEL PARSER ERROR WRAPPER ====================
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ParseErrorKind {
     Lexer(LexerError),          // ошибка лексера
     Tokens(TokensError),        // ошибка токенизации / ожидания токенов
@@ -274,6 +301,10 @@ impl ParseErrorKind {
                 RuntimeError::IoErrorMassage { name, message, .. } => {
                     format!("in the: {} error: {}", name, message)
                 }
+                RuntimeError::ImportNotFount { name, .. } => {
+                    format!("File named {} not found", name)
+                }
+                RuntimeError::Parse(parse) => parse.kind.message(),
             },
 
             other => format!("{:?}", other),

@@ -64,4 +64,5 @@ pub enum StmtKind {
         body: Vec<Stmt>,
     },
     Return(Expr),
+    Use(String)
 }

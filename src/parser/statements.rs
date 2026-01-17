@@ -77,6 +77,10 @@ impl ParserToken {
                     Ok(self.make_stmt(StmtKind::Expr(expr), span))
                 }
             }
+            Some(TokenPosition {
+                token: Token::Use,
+                position: _,
+            }) => self.parse_use(),
 
             Some(TokenPosition { token, position }) => Err(Box::new(ParseError::new(
                 ParseErrorKind::Tokens(TokensError::UnexpectedToken(token.clone())),
@@ -92,6 +96,29 @@ impl ParserToken {
             ))),
         }
     }
+    /// парсиег импорта
+    pub(super) fn parse_use(&mut self) -> TError<Stmt> {
+        let start = self.expect(&Token::Use)?;
+        let file= self.advance().unwrap();
+        let _= self.advance().unwrap();
+        let file_name = match file.token {
+            Token::Ident(name) => name,
+            _ => return Err(Box::new(ParseError::new(
+                ParseErrorKind::Tokens(TokensError::ExpectedToken(
+                    Token::Ident(String::new()),
+                    file.token,
+                )),
+                file.position,
+                None,
+                None,
+            ))),
+        };
+        let name = format!("{}.dr", file_name);
+        let end = self.expect(&Token::Semicolon)?;
+        let span = self.merge_span(&start.position, &end.position);
+        Ok(self.make_stmt(StmtKind::Use(name), span))
+    }
+
     /// парсинг переменной
     pub(super) fn parse_var_decl(&mut self) -> TError<Stmt> {
         match self.advance() {

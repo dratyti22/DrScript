@@ -13,6 +13,8 @@ mod lexer;
 mod parser;
 mod type_error;
 mod type_values;
+mod import;
+
 
 use crate::interpreter::Interpretation;
 use crate::io::DrScriptIo;

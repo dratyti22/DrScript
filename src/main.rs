@@ -11,6 +11,7 @@ mod lexer;
 mod parser;
 mod type_error;
 mod type_values;
+mod import;
 
 use cli::Cli;
 use interpreter::Interpretation;

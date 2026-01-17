@@ -1,3 +1,0 @@
-ver a ="привет";
-print(chars(a));
-print(len(a));

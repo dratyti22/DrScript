@@ -1,3 +1,4 @@
+use std::fmt::{Formatter, Display};
 use crate::type_error::{Position, Span, TokenPosition};
 use logos::Logos;
 
@@ -70,6 +71,8 @@ pub enum Token {
         s[1..s.len()-1].to_string()
     })]
     Str(String),
+    #[token("use")]
+    Use,
 }
 
 pub fn lex(input: &str) -> Vec<TokenPosition> {

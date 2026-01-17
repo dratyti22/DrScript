@@ -3,7 +3,9 @@ use crate::io::{DrScriptIo, IoTerminal};
 use crate::type_error::{RuntimeError, Span};
 use crate::type_values::Type;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
@@ -33,6 +35,8 @@ pub struct Interpretation {
     funcs: HashMap<String, (Vec<String>, Vec<Stmt>)>,
     builtins: HashMap<String, BuiltinFun>,
     io: Rc<RefCell<dyn DrScriptIo>>,
+    current_file: PathBuf,
+    loaded_files: HashSet<PathBuf>,
 }
 
 impl Interpretation {
@@ -42,9 +46,19 @@ impl Interpretation {
             funcs: HashMap::new(),
             builtins: HashMap::new(),
             io: io.unwrap_or(Rc::new(RefCell::new(IoTerminal))),
+            loaded_files: HashSet::new(),
+            current_file: PathBuf::new(),
         };
         i.register_builtin();
         i
+    }
+    pub fn get_vars_funcs(
+        &self,
+    ) -> (
+        &HashMap<String, Value>,
+        &HashMap<String, (Vec<String>, Vec<Stmt>)>,
+    ) {
+        (&self.vars, &self.funcs)
     }
 
     pub fn add_builtin(&mut self, b: BuiltinFun) {
@@ -168,6 +182,36 @@ impl Interpretation {
             StmtKind::Return(expr) => {
                 let value = self.run_expr(expr)?;
                 Ok(ExecReturn::Return(value))
+            }
+            StmtKind::Use(name) => {
+                let path = std::env::current_dir()
+                    .unwrap()
+                    .to_path_buf()
+                    .join(name);
+                if self.loaded_files.contains(&path) {
+                    return Ok(ExecReturn::None);
+                }
+                fs::canonicalize(&path).map_err(|_| RuntimeError::ImportNotFount {
+                    name: path.to_str().unwrap().to_string(),
+                    span: span.clone(),
+                })?;
+                self.loaded_files.insert(path.clone());
+                let code =
+                    std::fs::read_to_string(&path).map_err(|_| RuntimeError::ImportNotFount {
+                        name: path.to_str().unwrap().to_string(),
+                        span,
+                    })?;
+                let (ver, func) = self.import_use(code.as_str(), self.io.clone())?;
+
+                for (name, value) in ver {
+                    self.vars.insert(name.clone(), value.clone());
+                }
+                for (name, (param, body)) in func {
+                    self.funcs
+                        .insert(name.clone(), (param.clone(), body.clone()));
+                }
+
+                Ok(ExecReturn::None)
             }
         }
     }
@@ -300,6 +344,8 @@ impl Interpretation {
                     funcs: self.funcs.clone(),
                     builtins: self.builtins.clone(),
                     io: self.io.clone(),
+                    current_file: self.current_file.clone(),
+                    loaded_files: self.loaded_files.clone(),
                 };
 
                 for (param, arg_expr) in params.into_iter().zip(args.into_iter()) {
