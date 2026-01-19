@@ -1,4 +1,6 @@
 use add_math.dr;
+
 ver x = 1;
 print(x);
+print(a);
 

@@ -1,4 +1,3 @@
-use main.dr;
-ver a = 5;
-print(a);
 
+ver a = 5;
+print(a+1);

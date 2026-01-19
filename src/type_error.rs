@@ -199,6 +199,10 @@ pub enum RuntimeError {
         span: Span,
     },
     Parse(Box<ParseError>),
+    CycleImport {
+        name: String,
+        span:Span,
+    }
 }
 impl RuntimeError {
     pub fn span(&self) -> Span {
@@ -211,6 +215,7 @@ impl RuntimeError {
             RuntimeError::DivisionByZero => Default::default(),
             RuntimeError::IoErrorMassage { span, .. } => span.clone(),
             RuntimeError::ImportNotFount { span, .. } => span.clone(),
+            RuntimeError::CycleImport { span, .. } => span.clone(),
             RuntimeError::Parse(_) => Default::default(),
         }
     }
@@ -257,6 +262,8 @@ impl fmt::Display for RuntimeError {
                 write!(f, "File named {} not found", name)
             }
             RuntimeError::Parse(kind) => write!(f, "{:?}", kind),
+            RuntimeError::CycleImport { name, .. } => write!(f, "Cycle import: {}", name),
+
         }
     }
 }
@@ -305,6 +312,7 @@ impl ParseErrorKind {
                     format!("File named {} not found", name)
                 }
                 RuntimeError::Parse(parse) => parse.kind.message(),
+                RuntimeError::CycleImport { name, .. } => format!("Cycle import: {}", name),
             },
 
             other => format!("{:?}", other),

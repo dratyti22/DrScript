@@ -24,7 +24,7 @@ pub struct Value {
 }
 
 #[derive(Debug)]
-enum ExecReturn {
+pub enum ExecReturn {
     Return(Type),
     None,
 }
@@ -37,6 +37,7 @@ pub struct Interpretation {
     io: Rc<RefCell<dyn DrScriptIo>>,
     current_file: PathBuf,
     loaded_files: HashSet<PathBuf>,
+    import_stack: Vec<PathBuf>,
 }
 
 impl Interpretation {
@@ -48,6 +49,7 @@ impl Interpretation {
             io: io.unwrap_or(Rc::new(RefCell::new(IoTerminal))),
             loaded_files: HashSet::new(),
             current_file: PathBuf::new(),
+            import_stack: Vec::new(),
         };
         i.register_builtin();
         i
@@ -75,7 +77,7 @@ impl Interpretation {
         Ok(())
     }
 
-    fn run_stmt(&mut self, stmt: Stmt) -> RuntimeResult<ExecReturn> {
+    pub fn run_stmt(&mut self, stmt: Stmt) -> RuntimeResult<ExecReturn> {
         let span = stmt.span.clone();
         match stmt.kind {
             StmtKind::VerDecl {
@@ -184,33 +186,40 @@ impl Interpretation {
                 Ok(ExecReturn::Return(value))
             }
             StmtKind::Use(name) => {
-                let path = std::env::current_dir()
-                    .unwrap()
-                    .to_path_buf()
-                    .join(name);
+                let path = std::env::current_dir().unwrap().to_path_buf().join(name);
                 if self.loaded_files.contains(&path) {
                     return Ok(ExecReturn::None);
                 }
+
+                if self.import_stack.contains(&path) {
+                    let files_path = self
+                        .import_stack
+                        .iter()
+                        .map(|i| i.to_str().unwrap().to_string())
+                        .collect::<Vec<String>>()
+                        .join(" -> ");
+                    return Err(RuntimeError::CycleImport {
+                        name: files_path,
+                        span: span.clone(),
+                    });
+                }
+
                 fs::canonicalize(&path).map_err(|_| RuntimeError::ImportNotFount {
                     name: path.to_str().unwrap().to_string(),
                     span: span.clone(),
                 })?;
-                self.loaded_files.insert(path.clone());
+                self.import_stack.push(path.clone());
                 let code =
                     std::fs::read_to_string(&path).map_err(|_| RuntimeError::ImportNotFount {
                         name: path.to_str().unwrap().to_string(),
                         span,
                     })?;
-                let (ver, func) = self.import_use(code.as_str(), self.io.clone())?;
-
-                for (name, value) in ver {
-                    self.vars.insert(name.clone(), value.clone());
-                }
-                for (name, (param, body)) in func {
-                    self.funcs
-                        .insert(name.clone(), (param.clone(), body.clone()));
-                }
-
+                let prev_file = self.current_file.clone();
+                self.current_file = path.clone();
+                self.import_use(code.as_str())?;
+                self.current_file = prev_file;
+                self.import_stack.pop();
+                self.loaded_files.insert(path);
                 Ok(ExecReturn::None)
             }
         }
@@ -346,6 +355,7 @@ impl Interpretation {
                     io: self.io.clone(),
                     current_file: self.current_file.clone(),
                     loaded_files: self.loaded_files.clone(),
+                    import_stack: self.import_stack.clone(),
                 };
 
                 for (param, arg_expr) in params.into_iter().zip(args.into_iter()) {
