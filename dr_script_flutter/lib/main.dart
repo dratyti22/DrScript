@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:code_text_field/code_text_field.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dr_script_service.dart';
 import "languages/dr_script.dart";
@@ -8,16 +10,16 @@ void main() {
   runApp(const DrScriptIDE());
 }
 
-// --- ЦВЕТОВАЯ ПАЛИТРА (VS Code Dark Theme Inspired) ---
+// --- ЦВЕТОВАЯ ПАЛИТРА ---
 class AppColors {
-  static const bgDark = Color(0xFF1E1E1E); // Основной фон редактора
-  static const bgPanel = Color(0xFF252526); // Фон панелей (Explorer/Terminal)
-  static const bgHeader = Color(0xFF333333); // Заголовки вкладок
-  static const accent = Color(0xFF007ACC); // Акцентный синий
-  static const runBtn = Color(0xFF4CAF50); // Зеленый Run
-  static const textMain = Color(0xFFCCCCCC); // Основной текст
-  static const textDim = Color(0xFF858585); // Тусклый текст
-  static const border = Color(0xFF3E3E42); // Границы
+  static const bgDark = Color(0xFF1E1E1E);
+  static const bgPanel = Color(0xFF252526);
+  static const bgHeader = Color(0xFF333333);
+  static const accent = Color(0xFF007ACC);
+  static const runBtn = Color(0xFF4CAF50);
+  static const textMain = Color(0xFFCCCCCC);
+  static const textDim = Color(0xFF858585);
+  static const border = Color(0xFF3E3E42);
 }
 
 class DrScriptIDE extends StatelessWidget {
@@ -46,14 +48,16 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late CodeController _codeController;
+  List<EditorTab> tabs = [];
+  int _activeTabIndex = -1;
+
+  // ТЕКУЩАЯ РАБОЧАЯ ПАПКА (откуда запущено приложение)
+  final Directory currentDir = Directory.current;
+  List<FileSystemEntity> filesInDir = [];
+
   String output = "";
   bool isRunning = false;
-
-  // Состояние видимости панелей
-  bool isExplorerVisible = true; // <--- НОВАЯ ПЕРЕМЕННАЯ
-
-  // Переменные для ввода
+  bool isExplorerVisible = true;
   bool isWaitingForInput = false;
   String inputPrompt = "";
   final TextEditingController _inputController = TextEditingController();
@@ -62,14 +66,9 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _codeController = CodeController(
-      text: '''ver a = input("Как тебя зовут? ");
-print("Привет, " + a);
-print("Длина имени: " + len(a));
-print("Готово!");''',
-      language: drScript,
-    );
+    _refreshFileList(); // Загружаем список файлов при старте
 
+    // Слушатель событий от Rust
     DrScriptService.events.listen((event) {
       if (!mounted) return;
       setState(() {
@@ -89,13 +88,160 @@ print("Готово!");''',
     });
   }
 
+  // --- РАБОТА С ФАЙЛОВОЙ СИСТЕМОЙ ---
+
+  void _refreshFileList() {
+    setState(() {
+      try {
+        // Получаем список файлов и сортируем: папки сверху, файлы снизу
+        filesInDir = currentDir.listSync();
+        filesInDir.sort((a, b) {
+          return a.path.compareTo(b.path);
+        });
+      } catch (e) {
+        print("Error reading directory: $e");
+      }
+    });
+  }
+
+  // Создание нового файла через диалог
+  Future<void> _showCreateFileDialog() async {
+    String newFileName = "";
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Новый файл"),
+        backgroundColor: AppColors.bgPanel,
+        content: TextField(
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: "example.dr",
+            enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: AppColors.accent)),
+          ),
+          onChanged: (value) => newFileName = value,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Отмена"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+            onPressed: () {
+              Navigator.pop(context);
+              if (newFileName.isNotEmpty) {
+                _createNewFile(newFileName);
+              }
+            },
+            child: const Text("Создать"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _createNewFile(String name) async {
+    final file = File('${currentDir.path}/$name');
+    if (!await file.exists()) {
+      await file.writeAsString(""); // Создаем пустой файл
+      _refreshFileList(); // Обновляем проводник
+      _openFile(file.path, name); // Сразу открываем его
+    } else {
+      // Если файл есть, просто открываем
+      _openFile(file.path, name);
+    }
+  }
+
+  // Открытие существующего файла
+  Future<void> _openFile(String path, String name) async {
+    // 1. Проверяем, не открыт ли уже
+    int existingIndex = tabs.indexWhere((tab) => tab.filePath == path);
+    if (existingIndex != -1) {
+      setState(() => _activeTabIndex = existingIndex);
+      return;
+    }
+
+    // 2. Читаем контент
+    final file = File(path);
+    String content = "";
+    if (await file.exists()) {
+      content = await file.readAsString();
+    }
+
+    // 3. Создаем вкладку
+    final controller = CodeController(
+      text: content,
+      language: drScript,
+    );
+
+    controller.addListener(() {
+      final idx = tabs.indexWhere((t) => t.filePath == path);
+      if (idx != -1 && !tabs[idx].isDirty) {
+        setState(() => tabs[idx].isDirty = true);
+      }
+    });
+
+    setState(() {
+      tabs.add(
+          EditorTab(filePath: path, fileName: name, controller: controller));
+      _activeTabIndex = tabs.length - 1;
+    });
+  }
+
+  void _closeTab(int index) {
+    setState(() {
+      tabs[index].controller.dispose();
+      tabs.removeAt(index);
+      if (_activeTabIndex >= index) {
+        _activeTabIndex = _activeTabIndex - 1;
+        if (_activeTabIndex < 0 && tabs.isNotEmpty) _activeTabIndex = 0;
+      }
+    });
+  }
+
+  // Обновленный метод сохранения
+  Future<void> _saveCurrentFile({bool showNotification = false}) async {
+    if (_activeTabIndex == -1) return;
+
+    final tab = tabs[_activeTabIndex];
+    final file = File(tab.filePath);
+
+    try {
+      await file.writeAsString(tab.controller.text);
+
+      setState(() {
+        tab.isDirty = false;
+      });
+
+      if (showNotification) {
+        ScaffoldMessenger.of(context).clearSnackBars(); // Убираем старые
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Saved: ${tab.fileName}"),
+            duration: const Duration(milliseconds: 800),
+            backgroundColor: AppColors.accent,
+            behavior: SnackBarBehavior.floating,
+            width: 200,
+          ),
+        );
+      }
+      print("Saved: ${tab.filePath}");
+    } catch (e) {
+      print("Error saving file: $e");
+    }
+  }
+
   void runCode() async {
+    if (_activeTabIndex == -1) return;
+    await _saveCurrentFile();
     setState(() {
       isRunning = true;
       output = "";
       isWaitingForInput = false;
     });
-    await DrScriptService.runCode(_codeController.text);
+    // Rust получит реальный путь к файлу, поэтому import сработает!
+    await DrScriptService.runCode(tabs[_activeTabIndex].controller.text);
   }
 
   void _submitInput() {
@@ -110,55 +256,87 @@ print("Готово!");''',
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          // Верхняя панель (Toolbar)
-          _buildToolbar(),
+    // 1. Определяем комбинации клавиш
+    return CallbackShortcuts(
+      bindings: {
+        // Ctrl + S (Windows/Linux)
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+          _saveCurrentFile(showNotification: true);
+        },
+        // Cmd + S (macOS)
+        const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () {
+          _saveCurrentFile(showNotification: true);
+        },
+      },
+      // 2. Focus нужен, чтобы перехватывать нажатия глобально
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: Column(
+            children: [
+              _buildToolbar(),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Внутри метода build -> Column -> Expanded -> Row:
 
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 1. Activity Bar (Узкая полоска слева)
-                ActivityBar(
-                  isActive: isExplorerVisible,
-                  onToggle: () {
-                    setState(() {
-                      isExplorerVisible = !isExplorerVisible;
-                    });
-                  },
+                    ActivityBar(
+                      isActive: isExplorerVisible,
+                      onToggle: () => setState(
+                          () => isExplorerVisible = !isExplorerVisible),
+                      onCreateFile:
+                          _showCreateFileDialog, // <--- ДОБАВЬ ЭТУ СТРОКУ
+                    ),
+                    if (isExplorerVisible) ...[
+                      SizedBox(
+                        width: 220,
+                        child: FileExplorerPanel(
+                          // Передаем текущие файлы
+                          files: filesInDir,
+                          // <--- Убедись, что переменная filesInDir доступна (мы её добавляли в прошлом шаге)
+                          onFileTap: (file) {
+                            String name =
+                                file.path.split(Platform.pathSeparator).last;
+                            _openFile(file.path, name);
+                          },
+                        ),
+                      ),
+                      const VerticalDivider(width: 1),
+                    ],
+                    Expanded(
+                      child: tabs.isEmpty
+                          ? const Center(
+                              child: Text("Нет открытых файлов",
+                                  style: TextStyle(color: Colors.grey)))
+                          : CodeEditorPanel(
+                              tabs: tabs,
+                              activeIndex: _activeTabIndex,
+                              onTabSwitch: (index) =>
+                                  setState(() => _activeTabIndex = index),
+                              onTabClose: (index) => _closeTab(index),
+                            ),
+                    ),
+                    const VerticalDivider(width: 1),
+                    SizedBox(
+                      width: 350,
+                      child: ConsolePanel(
+                        output: output,
+                        isRunning: isRunning,
+                        isWaitingForInput: isWaitingForInput,
+                        inputPrompt: inputPrompt,
+                        inputController: _inputController,
+                        onInputSubmit: _submitInput,
+                        focusNode: _inputFocusNode,
+                      ),
+                    ),
+                  ],
                 ),
-
-                // 2. Проводник (Показываем только если isExplorerVisible == true)
-                if (isExplorerVisible) ...[
-                  const SizedBox(width: 220, child: FileExplorerPanel()),
-                  const VerticalDivider(width: 1),
-                ],
-
-                // 3. Редактор кода (Занимает все свободное место)
-                Expanded(child: CodeEditorPanel(controller: _codeController)),
-                const VerticalDivider(width: 1),
-
-                // 4. Терминал
-                SizedBox(
-                  width: 350,
-                  child: ConsolePanel(
-                    output: output,
-                    isRunning: isRunning,
-                    isWaitingForInput: isWaitingForInput,
-                    inputPrompt: inputPrompt,
-                    inputController: _inputController,
-                    onInputSubmit: _submitInput,
-                    focusNode: _inputFocusNode,
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const StatusBar(),
+            ],
           ),
-
-          const StatusBar(),
-        ],
+        ),
       ),
     );
   }
@@ -170,7 +348,6 @@ print("Готово!");''',
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          // Логотип сместим немного, так как слева теперь Activity Bar
           const SizedBox(width: 40),
           const Icon(Icons.code, color: AppColors.accent),
           const SizedBox(width: 10),
@@ -178,6 +355,11 @@ print("Готово!");''',
               style:
                   GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
           const Spacer(),
+          // Показываем путь активного файла (для отладки)
+          if (_activeTabIndex != -1)
+            Text(tabs[_activeTabIndex].filePath,
+                style: const TextStyle(color: Colors.grey, fontSize: 10)),
+          const SizedBox(width: 20),
           ElevatedButton.icon(
             onPressed: isRunning ? null : runCode,
             style: ElevatedButton.styleFrom(
@@ -203,41 +385,39 @@ print("Готово!");''',
   }
 }
 
-// --- НОВЫЙ ВИДЖЕТ: ACTIVITY BAR (Узкая полоска слева) ---
+// --- НОВЫЙ ACTIVITY BAR С КНОПКОЙ СОЗДАНИЯ ---
 class ActivityBar extends StatelessWidget {
   final bool isActive;
   final VoidCallback onToggle;
+  final VoidCallback onCreateFile; // Новый колбэк
 
   const ActivityBar({
     super.key,
     required this.isActive,
     required this.onToggle,
+    required this.onCreateFile,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: 50,
-      color: const Color(0xFF333333), // Цвет Activity Bar (как в VS Code)
+      color: const Color(0xFF333333),
       child: Column(
         children: [
           const SizedBox(height: 10),
-          // Кнопка "Проводник"
+          // Кнопка переключения проводника
           _buildIconButton(
-            icon: Icons.copy_all_outlined, // Иконка "файлы"
-            isActive: isActive,
-            onTap: onToggle,
-          ),
+              icon: Icons.copy_all_outlined,
+              isActive: isActive,
+              onTap: onToggle),
           const SizedBox(height: 15),
-          // Заглушка для поиска (для красоты)
-          _buildIconButton(icon: Icons.search, isActive: false, onTap: () {}),
-          const SizedBox(height: 15),
-          // Заглушка для git (для красоты)
+
+          // Кнопка "Создать файл" (+)
           _buildIconButton(
-              icon: Icons.source_outlined, isActive: false, onTap: () {}),
+              icon: Icons.add, isActive: false, onTap: onCreateFile),
 
           const Spacer(),
-          // Иконка настроек внизу
           _buildIconButton(
               icon: Icons.settings_outlined, isActive: false, onTap: () {}),
           const SizedBox(height: 10),
@@ -256,103 +436,184 @@ class ActivityBar extends StatelessWidget {
         width: 50,
         height: 50,
         decoration: BoxDecoration(
-          // Слева белая полоска, если активно
           border: isActive
               ? const Border(left: BorderSide(color: Colors.white, width: 2))
               : null,
         ),
-        child: Icon(
-          icon,
-          size: 24,
-          // Если активно - белый цвет, если нет - серый
-          color: isActive ? Colors.white : const Color(0xFF858585),
-        ),
+        child: Icon(icon,
+            size: 24, color: isActive ? Colors.white : const Color(0xFF858585)),
       ),
     );
   }
 }
 
-// --- ВИДЖЕТ: РЕДАКТОР КОДА ---
-class CodeEditorPanel extends StatelessWidget {
-  final CodeController controller;
+// --- УМНЫЙ ПРОВОДНИК (FILE EXPLORER) ---
+class FileExplorerPanel extends StatelessWidget {
+  final List<FileSystemEntity> files;
+  final Function(FileSystemEntity) onFileTap;
 
-  const CodeEditorPanel({super.key, required this.controller});
+  const FileExplorerPanel({
+    super.key,
+    required this.files,
+    required this.onFileTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Тот же шрифт для идеальной синхронизации
-    final codeFont = GoogleFonts.jetBrainsMono(fontSize: 14, height: 1.4);
+    return Container(
+      color: AppColors.bgPanel,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("EXPLORER",
+                    style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textDim)),
+                // Можно добавить кнопку обновления списка
+                const Icon(Icons.refresh, size: 14, color: Colors.grey),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: files.length,
+              itemBuilder: (context, index) {
+                final file = files[index];
+                // Получаем только имя файла
+                final name = file.path.split(Platform.pathSeparator).last;
+                // Пропускаем скрытые файлы (начинаются с точки)
+                if (name.startsWith('.')) return const SizedBox.shrink();
 
-    return Column(
-      children: [
-        // --- ВЕРХНЯЯ ПАНЕЛЬ ВКЛАДОК ---
-        Container(
-          height: 35,
-          color: const Color(0xFF252526),
-          // Темный фон заголовка (как панель Explorer)
-          child: Row(
-            children: [
-              // Активная вкладка "main.dr"
-              Container(
-                width: 150,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF1E1E1E),
-                  // Цвет фона такой же, как у редактора (сливается)
-                  border: Border(
-                    top: BorderSide(color: Color(0xFF007ACC), width: 2),
-                    // Синяя полоска активности
-                    right: BorderSide(
-                        color: Color(0xFF252526),
-                        width: 1), // Разделитель справа
-                  ),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
+                final isDir = FileSystemEntity.isDirectorySync(file.path);
+
+                return InkWell(
+                  onTap: () {
+                    if (!isDir) onFileTap(file);
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    child: Row(
                       children: [
-                        // Иконка файла (желтоватая для кода)
-                        const Icon(Icons.description,
-                            size: 14, color: Color(0xFFE8D18D)),
+                        Icon(
+                          isDir ? Icons.folder : Icons.description,
+                          size: 16,
+                          color: isDir
+                              ? AppColors.textMain
+                              : const Color(0xFFE8D18D),
+                        ),
                         const SizedBox(width: 8),
-                        Text(
-                          "main.dr",
-                          style: GoogleFonts.inter(
-                            color: Colors.white,
-                            // Яркий белый текст (активный файл)
-                            fontSize: 13,
+                        Expanded(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                                color: AppColors.textMain, fontSize: 13),
                           ),
                         ),
                       ],
                     ),
-                    // Кнопка закрытия (крестик) с эффектом при наведении
-                    InkWell(
-                      onTap: () {
-                        // Тут можно добавить логику закрытия в будущем
-                        print("Close tab pressed");
-                      },
-                      hoverColor: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                      child: const Padding(
-                        padding: EdgeInsets.all(2.0),
-                        child:
-                            Icon(Icons.close, size: 14, color: Colors.white70),
-                      ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ... Остальные классы (CodeEditorPanel, ConsolePanel, StatusBar, EditorTab) без изменений ...
+// Скопируй их из прошлого файла, они не меняются.
+// Если нужно, я могу скинуть их полным файлом.
+class CodeEditorPanel extends StatelessWidget {
+  final List<EditorTab> tabs;
+  final int activeIndex;
+  final Function(int) onTabSwitch;
+  final Function(int) onTabClose;
+
+  const CodeEditorPanel({
+    super.key,
+    required this.tabs,
+    required this.activeIndex,
+    required this.onTabSwitch,
+    required this.onTabClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (tabs.isEmpty || activeIndex == -1)
+      return Container(color: AppColors.bgDark);
+    final codeFont = GoogleFonts.jetBrainsMono(fontSize: 14, height: 1.4);
+    final activeTab = tabs[activeIndex];
+
+    return Column(
+      children: [
+        Container(
+          height: 35,
+          color: const Color(0xFF252526),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: tabs.length,
+            itemBuilder: (context, index) {
+              final tab = tabs[index];
+              final isActive = index == activeIndex;
+              return GestureDetector(
+                onTap: () => onTabSwitch(index),
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 120),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? const Color(0xFF1E1E1E)
+                        : const Color(0xFF2D2D2D),
+                    border: Border(
+                      top: isActive
+                          ? const BorderSide(color: Color(0xFF007ACC), width: 2)
+                          : BorderSide.none,
+                      right: const BorderSide(color: Colors.black12, width: 1),
                     ),
-                  ],
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.description,
+                          size: 14,
+                          color:
+                              isActive ? const Color(0xFFE8D18D) : Colors.grey),
+                      const SizedBox(width: 8),
+                      Text(
+                        "${tab.fileName}${tab.isDirty ? ' ●' : ''}",
+                        style: GoogleFonts.inter(
+                            color: isActive ? Colors.white : Colors.grey,
+                            fontSize: 13),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () => onTabClose(index),
+                        hoverColor: Colors.white10,
+                        borderRadius: BorderRadius.circular(4),
+                        child: const Icon(Icons.close,
+                            size: 14, color: Colors.white70),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              // Пустое место справа от вкладок
-            ],
+              );
+            },
           ),
         ),
-
-        // --- САМ РЕДАКТОР ---
         Expanded(
           child: Container(
-            color: const Color(0xFF1E1E1E), // Основной фон редактора
-            alignment: Alignment.topLeft, // Код прижат к левому верхнему углу
+            color: const Color(0xFF1E1E1E),
             child: CodeTheme(
               data: CodeThemeData(styles: {
                 'root': codeFont.copyWith(color: const Color(0xFFD4D4D4)),
@@ -367,9 +628,10 @@ class CodeEditorPanel extends StatelessWidget {
               }),
               child: SingleChildScrollView(
                 child: CodeField(
-                  controller: controller,
+                  key: ValueKey(activeTab.filePath),
+                  controller: activeTab.controller,
                   textStyle: codeFont,
-                  cursorColor: const Color(0xFF007ACC), // Синий курсор
+                  cursorColor: const Color(0xFF007ACC),
                   lineNumberStyle: LineNumberStyle(
                     textStyle:
                         codeFont.copyWith(color: const Color(0xFF858585)),
@@ -386,53 +648,6 @@ class CodeEditorPanel extends StatelessWidget {
   }
 }
 
-// --- ВИДЖЕТ: ПРОВОДНИК (EXPLORER) ---
-class FileExplorerPanel extends StatelessWidget {
-  const FileExplorerPanel({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.bgPanel,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            child: Text("EXPLORER",
-                style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDim)),
-          ),
-          _buildItem("main.dr", isSelected: true),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItem(String name,
-      {bool isSelected = false, bool isFolder = false}) {
-    return Container(
-      color: isSelected ? const Color(0xFF37373D) : Colors.transparent,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      child: Row(
-        children: [
-          Icon(isFolder ? Icons.folder : Icons.description,
-              size: 16,
-              color: isFolder ? AppColors.textDim : const Color(0xFFE8D18D)),
-          const SizedBox(width: 8),
-          Text(name,
-              style: GoogleFonts.inter(
-                  color: isSelected ? Colors.white : AppColors.textMain,
-                  fontSize: 13)),
-        ],
-      ),
-    );
-  }
-}
-
-// --- ВИДЖЕТ: ТЕРМИНАЛ (CONSOLE) ---
 class ConsolePanel extends StatelessWidget {
   final String output;
   final bool isRunning;
@@ -459,7 +674,6 @@ class ConsolePanel extends StatelessWidget {
       color: AppColors.bgDark,
       child: Column(
         children: [
-          // Заголовок терминала
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             color: AppColors.bgPanel,
@@ -482,29 +696,24 @@ class ConsolePanel extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-
-          // Поле вывода
           Expanded(
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
-              color: const Color(0xFF181818), // Чуть темнее для контраста
+              color: const Color(0xFF181818),
               child: SingleChildScrollView(
-                reverse: true, // Автоскролл вниз
+                reverse: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(output,
                         style: GoogleFonts.jetBrainsMono(
                             color: AppColors.textMain, fontSize: 13)),
-
-                    // Поле ввода (появляется только когда нужно)
                     if (isWaitingForInput)
                       Padding(
                         padding: const EdgeInsets.only(top: 8.0),
                         child: Row(
                           children: [
-                            // Промпт (текст перед вводом)
                             Text(inputPrompt,
                                 style: GoogleFonts.jetBrainsMono(
                                     color: AppColors.accent,
@@ -539,7 +748,6 @@ class ConsolePanel extends StatelessWidget {
   }
 }
 
-// --- ВИДЖЕТ: СТАТУС БАР (Внизу) ---
 class StatusBar extends StatelessWidget {
   const StatusBar({super.key});
 
@@ -556,7 +764,7 @@ class StatusBar extends StatelessWidget {
             children: [
               const Icon(Icons.code, size: 12, color: Colors.white),
               const SizedBox(width: 6),
-              Text("main.dr",
+              Text("Ready",
                   style: GoogleFonts.inter(
                       color: Colors.white,
                       fontSize: 11,
@@ -565,9 +773,6 @@ class StatusBar extends StatelessWidget {
           ),
           Row(
             children: [
-              Text("Ln 1, Col 1",
-                  style: GoogleFonts.inter(color: Colors.white, fontSize: 11)),
-              const SizedBox(width: 15),
               Text("UTF-8",
                   style: GoogleFonts.inter(color: Colors.white, fontSize: 11)),
               const SizedBox(width: 15),
@@ -578,4 +783,18 @@ class StatusBar extends StatelessWidget {
       ),
     );
   }
+}
+
+class EditorTab {
+  final String filePath;
+  final String fileName;
+  final CodeController controller;
+  bool isDirty;
+
+  EditorTab({
+    required this.filePath,
+    required this.fileName,
+    required this.controller,
+    this.isDirty = false,
+  });
 }
